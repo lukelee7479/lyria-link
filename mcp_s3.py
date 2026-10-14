@@ -23,7 +23,7 @@ load_dotenv()
 
 # Parse CLI arguments
 parser = argparse.ArgumentParser()
-parser.add_argument("--bucket", help="Target S3 bucket name (overrides .env)")
+parser.add_argument("--bucket", required=True, help="Target S3 bucket name (overrides .env)")
 parser.add_argument("--root", required=True, help="Absolute path on disk allowed for uploads")
 
 parser.add_argument("--cloudfront", required=False, help="cloudfront domain")
