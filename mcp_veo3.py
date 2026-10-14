@@ -45,11 +45,11 @@ OUTPUT_DIR = os.path.abspath(os.path.expanduser(args.output_dir))
 API_KEY = args.api_key 
 if not API_KEY:
   concat_envs = os.getenv("NANOBANANA_API_KEY")
-    try:
-        banana_envs = [value.strip() for value in concat_envs.split("++", 2)]
-        API_KEY = banana_envs[0]
-    except:
-        API_KEY = concat_envs
+  try:
+      banana_envs = [value.strip() for value in concat_envs.split("++", 2)]
+      API_KEY = banana_envs[0]
+  except:
+      API_KEY = concat_envs
   
 if not API_KEY:
     raise ValueError("Gemini API key must be provided via --api-key argument or NANOBANANA_API_KEY in .env file")
