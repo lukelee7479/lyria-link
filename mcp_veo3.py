@@ -20,7 +20,7 @@ from fastmcp import FastMCP, Context
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from mcp_s3 import upload_file, ROOT, BUCKET, s3
+from mcp_s3 import upload_file, BUCKET, s3
 
 try:
     from google import genai
