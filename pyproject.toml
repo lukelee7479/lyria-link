@@ -35,10 +35,10 @@ dependencies = [
 ]
 
 [project.scripts]
-mcp-veo3 = "mcp_veo3:main"
+veo3-link = "mcp_veo3:main"
 
 [project.entry-points."mcp.servers"]
-veo3 = "mcp_veo3:main"
+veo3-link = "mcp_veo3:main"
 
 [project.urls]
 Homepage = "https://github.com/dayongd1/mcp-veo3"
@@ -54,6 +54,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.sdist]
 include = [
     "mcp_veo3.py",
+    "mcp_s3.py",
     "__init__.py",
     "README.md",
     "LICENSE",
@@ -64,6 +65,7 @@ include = [
 [tool.hatch.build.targets.wheel]
 include = [
     "mcp_veo3.py",
+    "mcp_s3.py",
     "__init__.py",
 ]
 
