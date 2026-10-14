@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -19,9 +20,12 @@ from fastmcp import FastMCP, Context
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
+from mcp_s3 import upload_file, ROOT, BUCKET, s3
+
 try:
     from google import genai
     from google.genai import types as genai_types
+    from google.genai import errors as genai_errors
 except ImportError:
     genai = None
     genai_types = None
@@ -38,7 +42,7 @@ args = parser.parse_args()
 OUTPUT_DIR = os.path.abspath(os.path.expanduser(args.output_dir))
 
 # Get API key from CLI args or environment
-API_KEY = args.api_key or os.getenv("GEMINI_API_KEY")
+API_KEY = args.api_key or os.getenv("NANOBANANA_API_KEY")
 if not API_KEY:
     raise ValueError("Gemini API key must be provided via --api-key argument or GEMINI_API_KEY in .env file")
 
@@ -212,7 +216,7 @@ async def generate_video(
         raise ValueError("Prompt cannot be empty")
     
     # Validate model
-    valid_models = ["veo-3.0-generate-preview", "veo-3.0-fast-generate-preview", "veo-2.0-generate-001"]
+    valid_models = ["veo-3.1-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-lite-generate-preview"]
     if model not in valid_models:
         await ctx.error(f"Invalid model: {model}. Must be one of: {valid_models}")
         raise ValueError(f"Invalid model: {model}")
