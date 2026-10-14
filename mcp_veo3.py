@@ -69,6 +69,7 @@ class VideoGenerationResponse(BaseModel):
     generation_time: float
     file_size: int
     aspect_ratio: str
+    url: str
 
 
 class VideoListResponse(BaseModel):
@@ -194,7 +195,7 @@ async def generate_video_with_progress(
 async def generate_video(
     prompt: str,
     ctx: Context,
-    model: str = "veo-3.0-generate-preview"
+    model: str = "veo-3.1-generate-preview"
 ) -> VideoGenerationResponse:
     """Generate a video using Google Veo 3 from a text prompt
     
@@ -230,26 +231,24 @@ async def generate_video(
         
         await ctx.info(f"Video generated successfully: {result['filename']}")
         
-        ##return VideoGenerationResponse(**result)
+        
+        logger.info("Trying S3 upload")
+          
+        try:
+            temp_path = result['filename']
+            s3_response = await upload_file(local_path=temp_path, ctx=ctx)
+            result["url"] = s3_response.url
+            logger.info("s3 upload done")
+                
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        return VideoGenerationResponse(**result)
         
     except Exception as e:
         await ctx.error(f"Video generation failed: {str(e)}")
         raise ValueError(f"Video generation failed: {str(e)}")
-     try:
-            logger.info("Trying S3 upload")
-          
-            temp_filename = f"{uuid.uuid4()}.mp4"
-            temp_path = os.path.join(ROOT, temp_filename)
-            try:
-                with open(temp_path, "wb") as f:
-                    f.write(result)
-                s3_response = await upload_file(local_path=temp_filename, ctx=ctx)
-                uploaded_url = s3_response.url
-                logger.info("s3 upload done")
-                
-            finally:
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
+            
 
 @mcp.tool()
 async def generate_video_from_image(
