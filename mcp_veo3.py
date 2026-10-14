@@ -37,7 +37,7 @@ load_dotenv()
 parser = argparse.ArgumentParser()
 parser.add_argument("--output-dir", required=True, help="Directory to save generated videos")
 parser.add_argument("--api-key", help="Gemini API key (overrides .env)")
-args = parser.parse_args()
+args = parser.parse_known_args()
 
 OUTPUT_DIR = os.path.abspath(os.path.expanduser(args.output_dir))
 
