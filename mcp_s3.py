@@ -24,7 +24,7 @@ load_dotenv()
 # Parse CLI arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("--bucket", required=True, help="Target S3 bucket name (overrides .env)")
-parser.add_argument("--root", required=True, help="Absolute path on disk allowed for uploads")
+parser.add_argument("--output-dir", required=True, help="Absolute path on disk allowed for uploads")
 
 parser.add_argument("--cloudfront", required=False, help="cloudfront domain")
 parser.add_argument("--access-key", required=False, help="AWS Access Key ID for local use")
@@ -32,7 +32,7 @@ parser.add_argument("--secret-key", required=False, help="AWS Secret Access Key"
 args, unknown = parser.parse_known_args()
 sys.argv = [sys.argv[0]] + unknown
 
-ROOT = os.path.abspath(os.path.expanduser(args.root))
+OUTPUT_DIR = os.path.abspath(os.path.expanduser(args.output_dir))
 
 # Get bucket name from CLI args or environment
 BUCKET = args.bucket or os.getenv("S3_BUCKET_NAME")
@@ -235,7 +235,7 @@ async def upload_file(local_path: str, ctx: Context, expires_in: int = 86400, fo
     await ctx.info(f"Starting upload of {local_path}")
     
     # Validate and resolve the local path
-    full_local_path = safe_join(ROOT, local_path)
+    full_local_path = safe_join(OUTPUT_DIR, local_path)
     if not os.path.isfile(full_local_path):
         raise ValueError("File not found")
     
