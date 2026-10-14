@@ -30,7 +30,7 @@ parser.add_argument("--cloudfront", required=False, help="cloudfront domain")
 parser.add_argument("--access-key", required=False, help="AWS Access Key ID for local use")
 parser.add_argument("--secret-key", required=False, help="AWS Secret Access Key")
 args, unknown = parser.parse_known_args()
-sys.argv = [sys.argv[0]] + unknown
+
 
 OUTPUT_DIR = os.path.abspath(os.path.expanduser(args.output_dir))
 
