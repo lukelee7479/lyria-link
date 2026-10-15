@@ -203,13 +203,13 @@ async def generate_video_with_progress(
 async def generate_video(
     prompt: str,
     ctx: Context,
-    model: str = "veo-3.1-generate-preview"
+    model: str = "veo-3.1-lite-generate-preview"
 ) -> VideoGenerationResponse:
     """Generate a video using Google Veo 3 from a text prompt
     
     Args:
         prompt: Text prompt describing the video to generate
-        model: Veo model to use (veo-3.0-generate-preview, veo-3.0-fast-generate-preview, veo-2.0-generate-001)
+        model: Veo model to use 
     
     Returns:
         VideoGenerationResponse with video path, metadata, and generation info
@@ -263,14 +263,14 @@ async def generate_video_from_image(
     prompt: str,
     image_path: str,
     ctx: Context,
-    model: str = "veo-3.0-generate-preview"
+    model: str = "veo-3.1-lite-generate-preview"
 ) -> VideoGenerationResponse:
     """Generate a video using Google Veo 3 from an image and text prompt
     
     Args:
         prompt: Text prompt describing the video motion/action
         image_path: Path to the starting image file
-        model: Veo model to use (veo-3.0-generate-preview, veo-3.0-fast-generate-preview, veo-2.0-generate-001)
+        model: Veo model to use 
     
     Returns:
         VideoGenerationResponse with video path, metadata, and generation info
@@ -300,7 +300,7 @@ async def generate_video_from_image(
         raise ValueError(f"Image file not found: {full_image_path}")
     
     # Validate model
-    valid_models = ["veo-3.0-generate-preview", "veo-3.0-fast-generate-preview", "veo-2.0-generate-001"]
+    valid_models = ["veo-3.1-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-lite-generate-preview"]
     if model not in valid_models:
         await ctx.error(f"Invalid model: {model}. Must be one of: {valid_models}")
         raise ValueError(f"Invalid model: {model}")
