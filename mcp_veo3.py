@@ -97,6 +97,9 @@ class VideoInfoResponse(BaseModel):
     created: str
     modified: str
 
+class VeoSubmissionRateLimitError(RuntimeError):
+    """영상 생성 요청이 한도 초과 429로 거절된 경우"""
+
 def safe_join(root: str, user_path: str) -> str:
     """Safely join paths and prevent directory traversal"""
     abs_path = os.path.abspath(os.path.join(root, user_path))
@@ -410,9 +413,9 @@ async def generate_video_from_image(
 
         except Exception as e:
             await ctx.error(f"Image-to-video generation failed: {str(e)}")
-            if attempt == max_veo_retries:
+            if attempt == max_veo_retries -1:
                 raise ValueError(f"Image-to-video generation failed: {str(e)}")
-            await ayncio.sleep(2)
+            await asyncio.sleep(2)
 
     try:    
         logger.info("Trying S3 upload")
