@@ -29,6 +29,7 @@ parser.add_argument("--output-dir", required=True, help="Absolute path on disk a
 parser.add_argument("--cloudfront", required=False, help="cloudfront domain")
 parser.add_argument("--access-key", required=False, help="AWS Access Key ID for local use")
 parser.add_argument("--secret-key", required=False, help="AWS Secret Access Key")
+parser.add_argument("--region", required=False, default="ap-northeast-2", help="AWS bucket region")
 args, unknown = parser.parse_known_args()
 
 
@@ -40,7 +41,7 @@ if not BUCKET:
     raise ValueError("S3 bucket name must be provided via --bucket argument or S3_BUCKET_NAME in .env file")
 
 # Initialize S3 client with credentials from environment
-aws_region = os.getenv("AWS_DEFAULT_REGION", "ap-northeast-2")
+aws_region = args.region
 
 concat_envs = os.getenv("NANOBANANA_API_KEY")
 try:
@@ -51,14 +52,14 @@ try:
   if args.access_key and args.secret_key:
     access_key=args.access_key
     secret_key=args.secret_key
-    aws_region = "ap-southeast-2"
+
   
 
 except:
   try:
     access_key=args.access_key
     secret_key=args.secret_key
-    aws_region = "ap-southeast-2"
+
   except:
     access_key="garbage_topass_validation"
     secret_key="garbage_topass_validation"
