@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Optional
 from datetime import datetime
 from urllib.parse import urlparse, unquote
+from io import BytesIO
+from PIL import Image as PILImage
 
 from fastmcp import FastMCP, Context
 from pydantic import BaseModel
@@ -102,11 +104,33 @@ def safe_join(root: str, user_path: str) -> str:
         raise ValueError("Path escapes allowed root")
     return abs_path
 
+HTTPX_CLIENT: Optional[httpx.AsyncClient] = None
+
 def get_httpx_client():
     global HTTPX_CLIENT
     if HTTPX_CLIENT is None:
         HTTPX_CLIENT = httpx.AsyncClient(timeout=httpx.Timeout(60.0))
     return HTTPX_CLIENT
+
+def detect_image_mime(image_data: bytes) -> str:
+    if not image_data:
+        raise ValueError("Downloaded image is empty")
+
+    with PILImage.open(BytesIO(image_data)) as img:
+        mime_type = {
+            "JPEG": "image/jpeg",
+            "PNG": "image/png",
+        }.get(img.format)
+
+        if mime_type is None:
+            raise ValueError(
+                "Only JPEG and PNG input images are accepted"
+            )
+
+        img.verify()
+
+    return mime_type
+
 
 async def generate_video_with_progress(
     prompt: str,
@@ -357,7 +381,8 @@ async def generate_video_from_image(
         if not image_data:
             raise ValueError("No image data downloaded")
 
-        safe_mime_type = content_type if "image/" in content_type else "image/jpeg"
+        safe_mime_type = await asyncio.to_thread(detect_image_mime, image_data)
+        
         image = genai_types.Image(
             image_bytes=image_data, 
             mime_type=safe_mime_type
