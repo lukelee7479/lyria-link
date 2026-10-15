@@ -12,9 +12,11 @@ import logging
 import os
 import time
 import uuid
+import httpx
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
+from urllib.parse import urlparse, unquote
 
 from fastmcp import FastMCP, Context
 from pydantic import BaseModel
@@ -92,6 +94,7 @@ class VideoInfoResponse(BaseModel):
     size: int
     created: str
     modified: str
+
 def safe_join(root: str, user_path: str) -> str:
     """Safely join paths and prevent directory traversal"""
     abs_path = os.path.abspath(os.path.join(root, user_path))
@@ -99,12 +102,17 @@ def safe_join(root: str, user_path: str) -> str:
         raise ValueError("Path escapes allowed root")
     return abs_path
 
+def get_httpx_client():
+    global HTTPX_CLIENT
+    if HTTPX_CLIENT is None:
+        HTTPX_CLIENT = httpx.AsyncClient(timeout=httpx.Timeout(60.0))
+    return HTTPX_CLIENT
 
 async def generate_video_with_progress(
     prompt: str,
     model: str,
     ctx: Context,
-    image_path: Optional[str] = None,
+    image: Optional[genai_types.Image] = None,
     poll_interval: int = 10,
     max_poll_time: int = 600
 ) -> dict:
@@ -119,17 +127,13 @@ async def generate_video_with_progress(
         # Start video generation - using official API format
         await ctx.report_progress(progress=5, total=100)
         
-        if image_path and os.path.exists(image_path):
-            await ctx.info(f"Uploading image: {image_path}")
-            image_file = gemini_client.files.upload(path=image_path)
-            # For image-to-video, we need to pass the image
+        if image is not None:
             operation = gemini_client.models.generate_videos(
                 model=model,
                 prompt=prompt,
-                image=image_file
+                image=image
             )
         else:
-            # For text-to-video, only model and prompt are needed
             operation = gemini_client.models.generate_videos(
                 model=model,
                 prompt=prompt
@@ -310,63 +314,63 @@ async def generate_video_from_image(
                 logger.info("image downloaded from s3")
             except Exception as e:
                 logger.warning(f"download from s3 failed: {e}")
-                    if not image_data:
-        max_retries = 3
-
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "image/*,*/*;q=0.8"
-        }
-
-        http_client = get_httpx_client()
-        for attempt in range(max_retries):
-            try:
-                # await를 사용하여 비동기적으로 GET 요청 전송
-                response = await http_client.get(
-                    clean_url,
-                    headers=headers,
-                    timeout=30.0,
-                    follow_redirects=True
-                )
-                response.raise_for_status()
-
-                res_content_type = response.headers.get('content-type', '').lower()
-                if not any(img_type in res_content_type for img_type in ['image/', 'application/octet-stream']):
-                    raise ValidationError(f"URL does not point to an image. Content-Type: {res_content_type}")
-
-                image_data = response.content
-                content_type = res_content_type
-                break
-
-            except httpx.HTTPStatusError as e:
-                if attempt == max_retries -1:
-                    raise ValidationError(f"HTTP download status error: {e.response.status_code}")
-                await asyncio.sleep(2 ** attempt)
-
-            except httpx.TimeoutException:
-                if attempt == max_retries - 1:
-                    raise ValidationError("Image download timed out after multiple attempts")
-                logger.warning(f"Download attempt {attempt + 1} timed out, retrying...")
-                await asyncio.sleep(2 ** attempt)
-
-            except httpx.RequestError as e:
-                if attempt == max_retries - 1:
-                    raise ValidationError(f"Connection error during image download: {str(e)}")
-                logger.warning(f"Connection error on attempt {attempt + 1}, retrying...")
-                await asyncio.sleep(2 ** attempt)
-
         if not image_data:
-            raise ValidationError("No image data downloaded")
+            max_retries = 3
 
-        safe_mime_type = content_type if "image/" in content_type else "image/jpeg"
-        image = types.Part.from_bytes(
-            data=image_data, 
-            mime_type=safe_mime_type
-        )
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "image/*,*/*;q=0.8"
+            }
+
+            http_client = get_httpx_client()
+            for attempt in range(max_retries):
+                try:
+                    # await를 사용하여 비동기적으로 GET 요청 전송
+                    response = await http_client.get(
+                        clean_url,
+                        headers=headers,
+                        timeout=30.0,
+                        follow_redirects=True
+                    )
+                    response.raise_for_status()
+
+                    res_content_type = response.headers.get('content-type', '').lower()
+                    if not any(img_type in res_content_type for img_type in ['image/', 'application/octet-stream']):
+                        raise ValueError(f"URL does not point to an image. Content-Type: {res_content_type}")
+
+                    image_data = response.content
+                    content_type = res_content_type
+                    break
+
+                except httpx.HTTPStatusError as e:
+                    if attempt == max_retries -1:
+                        raise ValueError(f"HTTP download status error: {e.response.status_code}")
+                    await asyncio.sleep(2 ** attempt)
+
+                except httpx.TimeoutException:
+                    if attempt == max_retries - 1:
+                        raise ValueError("Image download timed out after multiple attempts")
+                    logger.warning(f"Download attempt {attempt + 1} timed out, retrying...")
+                    await asyncio.sleep(2 ** attempt)
+
+                except httpx.RequestError as e:
+                    if attempt == max_retries - 1:
+                        raise ValueError(f"Connection error during image download: {str(e)}")
+                    logger.warning(f"Connection error on attempt {attempt + 1}, retrying...")
+                    await asyncio.sleep(2 ** attempt)
+
+            if not image_data:
+                raise ValueError("No image data downloaded")
+
+            safe_mime_type = content_type if "image/" in content_type else "image/jpeg"
+            image = genai_types.Image(
+                image_bytes=image_data, 
+                mime_type=safe_mime_type
+            )
 
     except Exception as e:
         logger.exception(f"Unexpected error during image download/open: {e}")
-        raise APIError(f"Failed to download or open image: {str(e)}")
+        raise RuntimeError(f"Failed to download or open image: {str(e)}")
     
     # Validate model
     valid_models = ["veo-3.1-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-lite-generate-preview"]
@@ -379,7 +383,7 @@ async def generate_video_from_image(
             prompt=prompt,
             model=model,
             ctx=ctx,
-            image_path=image
+            image=image
         )
         
         await ctx.info(f"Image-to-video generation successful: {result['filename']}")
