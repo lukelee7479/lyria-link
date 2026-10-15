@@ -314,7 +314,18 @@ async def generate_video_from_image(
         )
         
         await ctx.info(f"Image-to-video generation successful: {result['filename']}")
-        
+      
+        logger.info("Trying S3 upload")
+          
+        try:
+            temp_path = result['filename']
+            s3_response = await upload_file(local_path=temp_path, ctx=ctx)
+            result["url"] = s3_response.url
+            logger.info("s3 upload done")
+                
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
         return VideoGenerationResponse(**result)
         
     except Exception as e:
