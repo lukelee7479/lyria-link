@@ -289,15 +289,84 @@ async def generate_video_from_image(
         await ctx.error("Image path cannot be empty")
         raise ValueError("Image path cannot be empty")
     
-    # Resolve image path (allow relative paths within output directory for security)
-    if not os.path.isabs(image_path):
-        full_image_path = safe_join(OUTPUT_DIR, image_path)
-    else:
-        full_image_path = image_path
-    
-    if not os.path.exists(full_image_path):
-        await ctx.error(f"Image file not found: {full_image_path}")
-        raise ValueError(f"Image file not found: {full_image_path}")
+    # Image download
+    try:
+      
+        image_data = None
+        content_type = "image/jpg"
+
+        clean_url = image_path.strip().replace("&amp;", "&")
+
+        if BUCKET and BUCKET in clean_url and "amazonaws.com" in clean_url:
+            logger.info("s3 url detected. trying boto3 download")
+            try:
+                parsed_url = urlparse(clean_url)
+                s3_key = unquote(parsed_url.path.lstrip('/'))
+                def fetch_from_s3():
+                    resp = s3.get_object(Bucket=BUCKET, Key=s3_key)
+                    return resp['Body'].read(), resp.get('ContentType', 'image/jpeg')
+                        
+                image_data, content_type = await asyncio.to_thread(fetch_from_s3)
+                logger.info("image downloaded from s3")
+            except Exception as e:
+                logger.warning(f"download from s3 failed: {e}")
+                    if not image_data:
+        max_retries = 3
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "image/*,*/*;q=0.8"
+        }
+
+        http_client = get_httpx_client()
+        for attempt in range(max_retries):
+            try:
+                # await를 사용하여 비동기적으로 GET 요청 전송
+                response = await http_client.get(
+                    clean_url,
+                    headers=headers,
+                    timeout=30.0,
+                    follow_redirects=True
+                )
+                response.raise_for_status()
+
+                res_content_type = response.headers.get('content-type', '').lower()
+                if not any(img_type in res_content_type for img_type in ['image/', 'application/octet-stream']):
+                    raise ValidationError(f"URL does not point to an image. Content-Type: {res_content_type}")
+
+                image_data = response.content
+                content_type = res_content_type
+                break
+
+            except httpx.HTTPStatusError as e:
+                if attempt == max_retries -1:
+                    raise ValidationError(f"HTTP download status error: {e.response.status_code}")
+                await asyncio.sleep(2 ** attempt)
+
+            except httpx.TimeoutException:
+                if attempt == max_retries - 1:
+                    raise ValidationError("Image download timed out after multiple attempts")
+                logger.warning(f"Download attempt {attempt + 1} timed out, retrying...")
+                await asyncio.sleep(2 ** attempt)
+
+            except httpx.RequestError as e:
+                if attempt == max_retries - 1:
+                    raise ValidationError(f"Connection error during image download: {str(e)}")
+                logger.warning(f"Connection error on attempt {attempt + 1}, retrying...")
+                await asyncio.sleep(2 ** attempt)
+
+        if not image_data:
+            raise ValidationError("No image data downloaded")
+
+        safe_mime_type = content_type if "image/" in content_type else "image/jpeg"
+        image = types.Part.from_bytes(
+            data=image_data, 
+            mime_type=safe_mime_type
+        )
+
+    except Exception as e:
+        logger.exception(f"Unexpected error during image download/open: {e}")
+        raise APIError(f"Failed to download or open image: {str(e)}")
     
     # Validate model
     valid_models = ["veo-3.1-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-lite-generate-preview"]
@@ -310,7 +379,7 @@ async def generate_video_from_image(
             prompt=prompt,
             model=model,
             ctx=ctx,
-            image_path=full_image_path
+            image_path=image
         )
         
         await ctx.info(f"Image-to-video generation successful: {result['filename']}")
