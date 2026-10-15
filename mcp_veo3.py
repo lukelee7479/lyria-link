@@ -246,15 +246,10 @@ async def generate_video(
         
         logger.info("Trying S3 upload")
           
-        try:
-            temp_path = result['filename']
-            s3_response = await upload_file(local_path=temp_path, ctx=ctx)
-            result["url"] = s3_response.url
-            logger.info("s3 upload done")
-                
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+        s3_response = await upload_file(local_path=result['filename'], ctx=ctx)
+        result["url"] = s3_response.url
+        logger.info("s3 upload done")
+
         return VideoGenerationResponse(**result)
         
     except Exception as e:
@@ -390,15 +385,11 @@ async def generate_video_from_image(
       
         logger.info("Trying S3 upload")
           
-        try:
-            temp_path = result['filename']
-            s3_response = await upload_file(local_path=temp_path, ctx=ctx)
-            result["url"] = s3_response.url
-            logger.info("s3 upload done")
-                
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+        
+        s3_response = await upload_file(local_path=result['filename'], ctx=ctx)
+        result["url"] = s3_response.url
+        logger.info("s3 upload done")
+
         return VideoGenerationResponse(**result)
         
     except Exception as e:
