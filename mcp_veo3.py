@@ -354,14 +354,14 @@ async def generate_video_from_image(
                     logger.warning(f"Connection error on attempt {attempt + 1}, retrying...")
                     await asyncio.sleep(2 ** attempt)
 
-            if not image_data:
-                raise ValueError("No image data downloaded")
+        if not image_data:
+            raise ValueError("No image data downloaded")
 
-            safe_mime_type = content_type if "image/" in content_type else "image/jpeg"
-            image = genai_types.Image(
-                image_bytes=image_data, 
-                mime_type=safe_mime_type
-            )
+        safe_mime_type = content_type if "image/" in content_type else "image/jpeg"
+        image = genai_types.Image(
+            image_bytes=image_data, 
+            mime_type=safe_mime_type
+        )
 
     except Exception as e:
         logger.exception(f"Unexpected error during image download/open: {e}")
