@@ -253,7 +253,7 @@ async def generate_video(
         raise ValueError("Prompt cannot be empty")
     
     # Validate model
-    valid_models = ["veo-3.1-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-lite-generate-preview"]
+    valid_models = ["veo-3.1-lite-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-generate-preview" ]
     if model not in valid_models:
         await ctx.error(f"Invalid model: {model}. Must be one of: {valid_models}")
         raise ValueError(f"Invalid model: {model}")
@@ -382,7 +382,7 @@ async def generate_video_from_image(
             raise ValueError("No image data downloaded")
 
         safe_mime_type = await asyncio.to_thread(detect_image_mime, image_data)
-        
+
         image = genai_types.Image(
             image_bytes=image_data, 
             mime_type=safe_mime_type
@@ -393,21 +393,28 @@ async def generate_video_from_image(
         raise RuntimeError(f"Failed to download or open image: {str(e)}")
     
     # Validate model
-    valid_models = ["veo-3.1-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-lite-generate-preview"]
-    if model not in valid_models:
-        await ctx.error(f"Invalid model: {model}. Must be one of: {valid_models}")
-        raise ValueError(f"Invalid model: {model}")
+    valid_models = ["veo-3.1-lite-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-generate-preview" ]
     
-    try:
-        result = await generate_video_with_progress(
-            prompt=prompt,
-            model=model,
-            ctx=ctx,
-            image=image
-        )
-        
-        await ctx.info(f"Image-to-video generation successful: {result['filename']}")
-      
+    max_veo_retries = len(valid_models)
+    for attempt in range(max_veo_retries):
+        try:
+            result = await generate_video_with_progress(
+                prompt=prompt,
+                model=valid_models[attempt],
+                ctx=ctx,
+                image=image
+            )
+            
+            await ctx.info(f"Image-to-video generation successful: {result['filename']}")
+            break
+
+        except Exception as e:
+            await ctx.error(f"Image-to-video generation failed: {str(e)}")
+            if attempt == max_veo_retries:
+                raise ValueError(f"Image-to-video generation failed: {str(e)}")
+            await ayncio.sleep(2)
+
+    try:    
         logger.info("Trying S3 upload")
           
         
@@ -418,8 +425,8 @@ async def generate_video_from_image(
         return VideoGenerationResponse(**result)
         
     except Exception as e:
-        await ctx.error(f"Image-to-video generation failed: {str(e)}")
-        raise ValueError(f"Image-to-video generation failed: {str(e)}")
+        await ctx.error(f"Image-to-video generated. but upload failed: {str(e)}")
+        raise ValueError(f"Image-to-video generated. but upload failed: {str(e)}")
 
 
 @mcp.tool()
