@@ -172,7 +172,7 @@ async def generate_video_with_progress(
         
         # Generate filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"veo3_video_{timestamp}.mp4"
+        filename = f"veo3_video_{timestamp}_{uuid.uuid4().hex}.mp4"
         output_path = output_dir / filename
         
         # Download the video
