@@ -154,17 +154,25 @@ async def generate_video_with_progress(
         # Start video generation - using official API format
         await ctx.report_progress(progress=5, total=100)
         
-        if image is not None:
-            operation = gemini_client.models.generate_videos(
-                model=model,
-                prompt=prompt,
-                image=image
-            )
-        else:
-            operation = gemini_client.models.generate_videos(
-                model=model,
-                prompt=prompt
-            )
+        try:
+            if image is not None:
+                operation = gemini_client.models.generate_videos(
+                    model=model,
+                    prompt=prompt,
+                    image=image
+                )
+            else:
+                operation = gemini_client.models.generate_videos(
+                    model=model,
+                    prompt=prompt
+                )
+        
+        except genai_errors.APIError as e:
+            if e.code == 429:
+                raise VeoSubmissionRateLimitError(
+                    f"{model}: generation request rejected with HTTP 429"
+                ) from e
+            raise
         
         await ctx.report_progress(progress=10, total=100)
         
@@ -226,9 +234,17 @@ async def generate_video_with_progress(
         }
         
     except Exception as e:
-        await ctx.report_progress(progress=0, total=100)  # Reset on error
-        await ctx.error(f"Video generation failed: {str(e)}")
-        raise ValueError(f"Video generation failed: {str(e)}")
+        logger.exception("Video generation failed")
+
+        try:
+            await ctx.report_progress(progress=0, total=100)  # Reset on error
+            await ctx.error(f"Video generation failed: {str(e)}")
+        except Exception:
+            logger.warning(
+                "Failed to report video generation error",
+                exc_info=True
+            )
+        raise 
 
 @mcp.tool()
 async def generate_video(
