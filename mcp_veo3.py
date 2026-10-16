@@ -291,13 +291,14 @@ async def generate_video(
                 ctx=ctx
             )
             
-            await ctx.info(f"Video generated successfully: {result['filename']}")
+            logger.info(f"Video generated successfully: {result['filename']}")
             break
           
         except VeoSubmissionRateLimitError as rle:
-            await ctx.warning(f"Model {current_model} quota exceeded. Falling back to next model...")
             if attempt == max_veo_retries - 1:
+                logger.error("All models rejected with 429")
                 raise
+            logger.warning(f"Model {current_model} quota exceeded. Falling back to next model...")
             await asyncio.sleep(2)
   
         except Exception as e:
@@ -457,13 +458,14 @@ async def generate_video_from_image(
                 image=image_obj
             )
             
-            await ctx.info(f"Image-to-video generation successful: {result['filename']}")
+            logger.info(f"Image-to-video generation successful: {result['filename']}")
             break
 
         except VeoSubmissionRateLimitError as rle:
-            await ctx.warning(f"Model {current_model} quota exceeded. Falling back to next model...")
             if attempt == max_veo_retries - 1:
+                logger.error("All models rejected with 429")
                 raise
+            logger.warning(f"Model {current_model} quota exceeded. Falling back to next model...")
             await asyncio.sleep(2)
 
         except Exception as e:
