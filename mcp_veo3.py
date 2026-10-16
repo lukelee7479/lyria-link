@@ -414,31 +414,16 @@ async def generate_video_from_image(
     # Validate model
     valid_models = ["veo-3.1-lite-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-generate-preview" ]
 
-    result = None
     if model and model in valid_models:
-        try:
-            image_obj = genai_types.Image(
-                image_bytes=image_data, 
-                mime_type=safe_mime_type
-            )
-            valid_models.remove(model)
-            result = await generate_video_with_progress(
-                prompt=prompt,
-                model=model,
-                ctx=ctx,
-                image=image_obj
-            )
-            
-            await ctx.info(f"Image-to-video generation successful: {result['filename']}")
-            
+        models_to_try = [model] + [candidate for candidate in valid_models if candidate != model]
+    else:
+        models_to_try = valid_models
 
-        except Exception as e:
-            logger.error(f"Non-retryable error with model {current_model}: {e}")
-            await ctx.error(f"Generation failed with non-retryable error: {str(e)}")
-
-    max_veo_retries = len(valid_models)
+    result = None
+  
+    max_veo_retries = len(models_to_try)
     for attempt in range(max_veo_retries):
-        current_model = valid_models[attempt]
+        current_model = models_to_try[attempt]
 
         try:
             image_obj = genai_types.Image(
