@@ -273,20 +273,39 @@ async def generate_video(
     
     # Validate model
     valid_models = ["veo-3.1-lite-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-generate-preview" ]
-    if model not in valid_models:
-        await ctx.error(f"Invalid model: {model}. Must be one of: {valid_models}")
-        raise ValueError(f"Invalid model: {model}")
-    
+  
+    if model and model in valid_models:
+        models_to_try = [model] + [candidate for candidate in valid_models if candidate != model]
+    else:
+        models_to_try = valid_models
+
+    result = None
+    max_veo_retries = len(models_to_try)
+    for attempt in range(max_veo_retries):
+        current_model = models_to_try[attempt]
+  
+        try:
+            result = await generate_video_with_progress(
+                prompt=prompt,
+                model=current_model,
+                ctx=ctx
+            )
+            
+            await ctx.info(f"Video generated successfully: {result['filename']}")
+            break
+          
+        except VeoSubmissionRateLimitError as rle:
+            await ctx.warning(f"Model {current_model} quota exceeded. Falling back to next model...")
+            if attempt == max_veo_retries - 1:
+                raise
+            await asyncio.sleep(2)
+  
+        except Exception as e:
+            logger.error(f"Non-retryable error with model {current_model}: {e}")
+            await ctx.error(f"Generation failed with non-retryable error: {str(e)}")
+            raise
+            
     try:
-        result = await generate_video_with_progress(
-            prompt=prompt,
-            model=model,
-            ctx=ctx
-        )
-        
-        await ctx.info(f"Video generated successfully: {result['filename']}")
-        
-        
         logger.info("Trying S3 upload")
           
         s3_response = await upload_file(local_path=result['filename'], ctx=ctx)
@@ -296,8 +315,8 @@ async def generate_video(
         return VideoGenerationResponse(**result)
         
     except Exception as e:
-        await ctx.error(f"Video generation failed: {str(e)}")
-        raise ValueError(f"Video generation failed: {str(e)}")
+        await ctx.error(f"Video generated. but upload failed: {str(e)}")
+        raise ValueError(f"Video generated. but upload failed: {str(e)}")
             
 
 @mcp.tool()
