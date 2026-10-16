@@ -413,25 +413,59 @@ async def generate_video_from_image(
     
     # Validate model
     valid_models = ["veo-3.1-lite-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-generate-preview" ]
-    
-    max_veo_retries = len(valid_models)
-    for attempt in range(max_veo_retries):
+
+    result = None
+    if model and model in valid_models:
         try:
+            image_obj = genai_types.Image(
+                image_bytes=image_data, 
+                mime_type=safe_mime_type
+            )
+            valid_models.remove(model)
             result = await generate_video_with_progress(
                 prompt=prompt,
-                model=valid_models[attempt],
+                model=model,
                 ctx=ctx,
-                image=image
+                image=image_obj
+            )
+            
+            await ctx.info(f"Image-to-video generation successful: {result['filename']}")
+            
+
+        except Exception as e:
+            logger.error(f"Non-retryable error with model {current_model}: {e}")
+            await ctx.error(f"Generation failed with non-retryable error: {str(e)}")
+
+    max_veo_retries = len(valid_models)
+    for attempt in range(max_veo_retries):
+        current_model = valid_models[attempt]
+
+        try:
+            image_obj = genai_types.Image(
+                image_bytes=image_data, 
+                mime_type=safe_mime_type
+            )
+          
+            result = await generate_video_with_progress(
+                prompt=prompt,
+                model=current_model,
+                ctx=ctx,
+                image=image_obj
             )
             
             await ctx.info(f"Image-to-video generation successful: {result['filename']}")
             break
 
-        except Exception as e:
-            await ctx.error(f"Image-to-video generation failed: {str(e)}")
-            if attempt == max_veo_retries -1:
-                raise ValueError(f"Image-to-video generation failed: {str(e)}")
+        except VeoSubmissionRateLimitError as rle:
+            await ctx.warning(f"Model {current_model} quota exceeded. Falling back to next model...")
+            if attempt == max_veo_retries - 1:
+                raise
             await asyncio.sleep(2)
+
+        except Exception as e:
+            logger.error(f"Non-retryable error with model {current_model}: {e}")
+            await ctx.error(f"Generation failed with non-retryable error: {str(e)}")
+            raise
 
     try:    
         logger.info("Trying S3 upload")
