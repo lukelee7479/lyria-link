@@ -422,11 +422,6 @@ async def generate_video_from_image(
 
         safe_mime_type = await asyncio.to_thread(detect_image_mime, image_data)
 
-        image = genai_types.Image(
-            image_bytes=image_data, 
-            mime_type=safe_mime_type
-        )
-
     except Exception as e:
         logger.exception(f"Unexpected error during image download/open: {e}")
         raise RuntimeError(f"Failed to download or open image: {str(e)}")
