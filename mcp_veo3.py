@@ -155,16 +155,23 @@ async def generate_video_with_progress(
         await ctx.report_progress(progress=5, total=100)
         
         try:
+            config = genai_types.GenerateVideosConfig(
+                resolution = "720p",
+                duration_seconds=8
+            )
+          
             if image is not None:
                 operation = gemini_client.models.generate_videos(
                     model=model,
                     prompt=prompt,
                     image=image
+                    config=config
                 )
             else:
                 operation = gemini_client.models.generate_videos(
                     model=model,
                     prompt=prompt
+                    config=config
                 )
         
         except genai_errors.APIError as e:
