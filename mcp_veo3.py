@@ -164,13 +164,13 @@ async def generate_video_with_progress(
                 operation = gemini_client.models.generate_videos(
                     model=model,
                     prompt=prompt,
-                    image=image
+                    image=image,
                     config=config
                 )
             else:
                 operation = gemini_client.models.generate_videos(
                     model=model,
-                    prompt=prompt
+                    prompt=prompt,
                     config=config
                 )
         
