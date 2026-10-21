@@ -144,6 +144,9 @@ async def generate_video_with_progress(
     """Generate a video using Gemini Omni Flash"""
 
     start_time = time.time()
+  
+    if args.model:
+        model = args.model
 
     try:
         await ctx.info(f"Starting video generation with model: {model}")
