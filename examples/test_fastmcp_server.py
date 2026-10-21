@@ -27,7 +27,7 @@ def test_server_startup():
     print("✅ GEMINI_API_KEY found")
     
     # Test server startup
-    server_path = Path(__file__).parent.parent / "mcp_veo3.py"
+    server_path = Path(__file__).parent.parent / "mcp_omni.py"
     test_output_dir = Path(__file__).parent / "test_videos"
     test_output_dir.mkdir(exist_ok=True)
     
@@ -103,7 +103,7 @@ def test_configuration():
     print("=" * 30)
     
     config_files = [
-        ("mcp_veo3.py", "Main server file"),
+        ("mcp_omni.py", "Main server file"),
         ("requirements.txt", "Dependencies file"),
         ("config.json", "MCP configuration"),
         ("env_example.txt", "Environment template")
