@@ -451,6 +451,7 @@ async def generate_video_from_image(
     except VideoSubmissionRateLimitError as e:
         logger.error(f"Model quota exceeded: {e}")
         await ctx.error(f"Generation failed due to quota limit:{str(e)}")
+        raise
 
     except Exception as e:
         logger.error(f"Generation failed: {e}")
