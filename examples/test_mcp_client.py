@@ -16,7 +16,7 @@ from pathlib import Path
 
 async def run_mcp_server():
     """Start the MCP server as a subprocess"""
-    server_path = Path(__file__).parent.parent / "mcp_veo3.py"
+    server_path = Path(__file__).parent.parent / "mcp_omni.py"
     
     # Set environment variables
     env = os.environ.copy()
