@@ -30,6 +30,7 @@ parser.add_argument("--cloudfront", required=False, help="cloudfront domain")
 parser.add_argument("--access-key", required=False, help="AWS Access Key ID for local use")
 parser.add_argument("--secret-key", required=False, help="AWS Secret Access Key")
 parser.add_argument("--region", required=False, default="ap-northeast-2", help="AWS bucket region")
+parser.add_argument("--model", required=False, help="in case of omni deprecation, manually input the new model name")
 args, unknown = parser.parse_known_args()
 
 
