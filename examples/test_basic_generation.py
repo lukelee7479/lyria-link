@@ -13,7 +13,7 @@ from pathlib import Path
 # Add parent directory to path to import the MCP server
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_veo3 import generate_video_with_progress, gemini_client
+from mcp_omni import generate_video_with_progress, gemini_client
 
 async def test_basic_generation():
     """Test basic video generation"""
