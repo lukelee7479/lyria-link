@@ -175,7 +175,7 @@ async def generate_video_with_progress(
                 input=interaction_input,
                 response_format={
                     "type": "video",
-                    "resolution": "720p",
+                    "resolution": "360p",
                     "aspect_ratio": "16:9"
                 }
             )
