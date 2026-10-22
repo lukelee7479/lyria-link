@@ -332,7 +332,21 @@ async def generate_video(
         raise ValueError(f"Video generated. but upload failed: {str(e)}")
             
 
-@mcp.tool()
+@mcp.tool(
+    description=(
+        "Generate a video using a single input image as the starting scene, "
+        "then continue that scene with motion. "
+        "Choose this tool when the user requests 'animate this photo', "
+        "'start the video from this scene', or 'use this image as the first frame'. "
+        "If the user only wants to reference the subject's appearance or visual style "
+        "while creating a different scene, use generate_video_from_reference instead. "
+        "In prompt, explicitly state that the input image should be used as the first frame, "
+        "and describe the subsequent subject motion and camera movement. "
+        "Provide exactly one HTTP/HTTPS URL in image_path, pointing to a JPEG or PNG image "
+        "that the server can download. Local file paths and multiple images are not supported. "
+        "Returns the generated video URL and metadata."
+    )
+)
 async def generate_video_from_image(
     prompt: str,
     image_path: str,
@@ -490,7 +504,23 @@ async def generate_video_from_image(
         raise ValueError(f"Image-to-video generated. but upload failed: {str(e)}")
 
 
-@mcp.tool()
+@mcp.tool(
+    description=(
+        "Generate a new video using a single input image as a visual reference, "
+        "rather than as the starting frame. "
+        "Use the image to guide user-specified features such as a person's appearance, "
+        "a character's design, a product's appearance, an artistic style, or a color palette. "
+        "Choose this tool when the user requests 'show this character in a different location', "
+        "'create a new scene featuring this product', or 'make a video in this image's style'. "
+        "If the user wants the video to start from the scene shown in the image "
+        "or wants to animate the image itself, use generate_video_from_image instead. "
+        "In prompt, specify which features to reference and describe the new scene to create. "
+        "Explicitly state that the input image is a visual reference, not the starting frame. "
+        "Provide exactly one HTTP/HTTPS URL in image_path, pointing to a JPEG or PNG image "
+        "that the server can download. Local file paths and multiple images are not supported. "
+        "Returns the generated video URL and metadata."
+    )
+)
 async def generate_video_from_reference(
     prompt: str,
     image_path: str,
