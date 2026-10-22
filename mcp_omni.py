@@ -433,7 +433,7 @@ async def generate_video_with_progress(
                 "resolution": "720p"
             }
 
-            if task=="text_to_video" or "image_to_video" or "reference_to_video":
+            if task in ("text_to_video", "image_to_video", "reference_to_video"):
                 response_format["aspect_ratio"] = "16:9"
 
             interaction = await asyncio.to_thread(
