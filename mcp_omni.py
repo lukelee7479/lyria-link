@@ -449,21 +449,6 @@ async def generate_video_from_image(
         logger.exception(f"Unexpected error during image download/open: {e}")
         raise RuntimeError(f"Failed to download or open image: {str(e)}")
 
-    """
-    # Validate model
-    valid_models = ["veo-3.1-lite-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-generate-preview" ]
-
-    if model and model in valid_models:
-        models_to_try = [model] + [candidate for candidate in valid_models if candidate != model]
-    else:
-        models_to_try = valid_models
-
-    result = None
-  
-    max_veo_retries = len(models_to_try)
-    for attempt in range(max_veo_retries):
-        current_model = models_to_try[attempt]
-    """
     task = "image_to_video"
     result = None
 
@@ -623,21 +608,6 @@ async def generate_video_from_reference(
         logger.exception(f"Unexpected error during image download/open: {e}")
         raise RuntimeError(f"Failed to download or open image: {str(e)}")
 
-    """
-    # Validate model
-    valid_models = ["veo-3.1-lite-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-generate-preview" ]
-
-    if model and model in valid_models:
-        models_to_try = [model] + [candidate for candidate in valid_models if candidate != model]
-    else:
-        models_to_try = valid_models
-
-    result = None
-  
-    max_veo_retries = len(models_to_try)
-    for attempt in range(max_veo_retries):
-        current_model = models_to_try[attempt]
-    """
     task = "reference_to_video"
     result = None
 
