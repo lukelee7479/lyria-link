@@ -312,8 +312,8 @@ def _download_edit_video(
 async def _wait_for_edit_video(
     video_file,
     ctx: Context,
-    poll_interval: float = 5.0,
-    max_wait: float = 70.0,
+    poll_interval: float = 2.0,
+    max_wait: float = 60.0,
 ):
     """Wait for an uploaded Google file to become ACTIVE."""
     deadline = time.monotonic() + max_wait
