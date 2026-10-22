@@ -14,10 +14,12 @@ import time
 import uuid
 import httpx
 import base64
+import re
+import tempfile
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, unquote, parse_qs
 from io import BytesIO
 from PIL import Image as PILImage
 
@@ -25,7 +27,8 @@ from fastmcp import FastMCP, Context
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from mcp_s3 import upload_file, BUCKET, s3
+from mcp_s3 import upload_file, BUCKET, s3, args as s3_args
+from botocore.exceptions import BotoCoreError, ClientError
 
 try:
     from google import genai
@@ -141,7 +144,8 @@ async def generate_video_with_progress(
     ctx: Context,
     image_data: Optional[bytes] = None,
     image_mime_type: Optional[str] = None,
-    task: Optional[str] = None
+    task: Optional[str] = None,
+    video_uri: Optional[str] = None
 ) -> dict:
     """Generate a video using Gemini Omni Flash"""
 
@@ -157,22 +161,43 @@ async def generate_video_with_progress(
         await ctx.report_progress(progress=5, total=100)
 
         try:
-            if image_data is not None:
-                base64_image = base64.b64encode(image_data).decode("utf-8")
+            if task == "edit":
+                if not video_uri:
+                    raise ValueError(
+                        "task='edit' requires a processed Google video URI"
+                    )
+                else:
+                    if not video_uri.strip():
+                        raise ValueError("Google video URI cannot be empty")
+                    else:
+                        interaction_input = [
+                            {
+                                "type": "video",
+                                "uri": video_uri
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt
+                            }
+                        ]
 
-                interaction_input = [
-                    {
-                        "type": "image",
-                        "data": base64_image,
-                        "mime_type": image_mime_type
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
             else:
-                interaction_input = prompt
+                if image_data is not None:
+                    base64_image = base64.b64encode(image_data).decode("utf-8")
+
+                    interaction_input = [
+                        {
+                            "type": "image",
+                            "data": base64_image,
+                            "mime_type": image_mime_type
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ]
+                else:
+                    interaction_input = prompt
 
             extra_kwargs = {}
 
@@ -297,13 +322,15 @@ async def generate_video(
         models_to_try = valid_models
     """
 
+    task = "text_to_video"
     result = None
 
     try:
         result = await generate_video_with_progress(
             prompt=prompt,
             model=model,
-            ctx=ctx
+            ctx=ctx,
+            task = task
         )
         
         logger.info(f"Video generated successfully: {result['filename']}")
