@@ -140,7 +140,8 @@ async def generate_video_with_progress(
     model: str,
     ctx: Context,
     image_data: Optional[bytes] = None,
-    image_mime_type: Optional[str] = None
+    image_mime_type: Optional[str] = None,
+    task: Optional[str] = None
 ) -> dict:
     """Generate a video using Gemini Omni Flash"""
 
@@ -173,6 +174,15 @@ async def generate_video_with_progress(
             else:
                 interaction_input = prompt
 
+            extra_kwargs = {}
+
+            if task is not None:
+                extra_kwargs["generation_config"] = {
+                    "video_config": {
+                        "task": task
+                    }
+                }
+
             interaction = await asyncio.to_thread(
                 gemini_client.interactions.create,
                 model=model,
@@ -181,7 +191,8 @@ async def generate_video_with_progress(
                     "type": "video",
                     "resolution": "720p",
                     "aspect_ratio": "16:9"
-                }
+                },
+                **extra_kwargs
             )
 
         except genai_errors.APIError as e:
@@ -439,6 +450,7 @@ async def generate_video_from_image(
     for attempt in range(max_veo_retries):
         current_model = models_to_try[attempt]
     """
+    task = "image_to_video"
     result = None
 
     try:
@@ -447,7 +459,8 @@ async def generate_video_from_image(
             model=model,
             ctx=ctx,
             image_data=image_data,
-            image_mime_type=safe_mime_type
+            image_mime_type=safe_mime_type,
+            task=task
         )
         
         logger.info(f"Image-to-video generation successful: {result['filename']}")
@@ -475,6 +488,165 @@ async def generate_video_from_image(
     except Exception as e:
         await ctx.error(f"Image-to-video generated. but upload failed: {str(e)}")
         raise ValueError(f"Image-to-video generated. but upload failed: {str(e)}")
+
+
+@mcp.tool()
+async def generate_video_from_reference(
+    prompt: str,
+    image_path: str,
+    ctx: Context,
+    model: str = "gemini-omni-1.1-flash"
+) -> VideoGenerationResponse:
+    """Generate a video using Google omni flash from an reference and text prompt
+    
+    Args:
+        prompt: Text prompt describing the video motion/action
+        image_path: Path to the reference image file
+        model: Veo model to use 
+    
+    Returns:
+        VideoGenerationResponse with video path, metadata, and generation info
+    """
+    
+    await ctx.info(f"Starting image-to-video generation: {image_path}")
+    
+    if not prompt.strip():
+        await ctx.error("Prompt cannot be empty")
+        raise ValueError("Prompt cannot be empty")
+    
+    if not image_path.strip():
+        await ctx.error("Image path cannot be empty")
+        raise ValueError("Image path cannot be empty")
+    
+    # Image download
+    try:
+      
+        image_data = None
+        content_type = "image/jpg"
+
+        clean_url = image_path.strip().replace("&amp;", "&")
+
+        if BUCKET and BUCKET in clean_url and "amazonaws.com" in clean_url:
+            logger.info("s3 url detected. trying boto3 download")
+            try:
+                parsed_url = urlparse(clean_url)
+                s3_key = unquote(parsed_url.path.lstrip('/'))
+                def fetch_from_s3():
+                    resp = s3.get_object(Bucket=BUCKET, Key=s3_key)
+                    return resp['Body'].read(), resp.get('ContentType', 'image/jpeg')
+                        
+                image_data, content_type = await asyncio.to_thread(fetch_from_s3)
+                logger.info("image downloaded from s3")
+            except Exception as e:
+                logger.warning(f"download from s3 failed: {e}")
+        if not image_data:
+            max_retries = 3
+
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "image/*,*/*;q=0.8"
+            }
+
+            http_client = get_httpx_client()
+            for attempt in range(max_retries):
+                try:
+                    # await를 사용하여 비동기적으로 GET 요청 전송
+                    response = await http_client.get(
+                        clean_url,
+                        headers=headers,
+                        timeout=30.0,
+                        follow_redirects=True
+                    )
+                    response.raise_for_status()
+
+                    res_content_type = response.headers.get('content-type', '').lower()
+                    if not any(img_type in res_content_type for img_type in ['image/', 'application/octet-stream']):
+                        raise ValueError(f"URL does not point to an image. Content-Type: {res_content_type}")
+
+                    image_data = response.content
+                    content_type = res_content_type
+                    break
+
+                except httpx.HTTPStatusError as e:
+                    if attempt == max_retries -1:
+                        raise ValueError(f"HTTP download status error: {e.response.status_code}")
+                    await asyncio.sleep(2 ** attempt)
+
+                except httpx.TimeoutException:
+                    if attempt == max_retries - 1:
+                        raise ValueError("Image download timed out after multiple attempts")
+                    logger.warning(f"Download attempt {attempt + 1} timed out, retrying...")
+                    await asyncio.sleep(2 ** attempt)
+
+                except httpx.RequestError as e:
+                    if attempt == max_retries - 1:
+                        raise ValueError(f"Connection error during image download: {str(e)}")
+                    logger.warning(f"Connection error on attempt {attempt + 1}, retrying...")
+                    await asyncio.sleep(2 ** attempt)
+
+        if not image_data:
+            raise ValueError("No image data downloaded")
+
+        safe_mime_type = await asyncio.to_thread(detect_image_mime, image_data)
+
+    except Exception as e:
+        logger.exception(f"Unexpected error during image download/open: {e}")
+        raise RuntimeError(f"Failed to download or open image: {str(e)}")
+
+    """
+    # Validate model
+    valid_models = ["veo-3.1-lite-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-generate-preview" ]
+
+    if model and model in valid_models:
+        models_to_try = [model] + [candidate for candidate in valid_models if candidate != model]
+    else:
+        models_to_try = valid_models
+
+    result = None
+  
+    max_veo_retries = len(models_to_try)
+    for attempt in range(max_veo_retries):
+        current_model = models_to_try[attempt]
+    """
+    task = "reference_to_video"
+    result = None
+
+    try:
+        result = await generate_video_with_progress(
+            prompt=prompt,
+            model=model,
+            ctx=ctx,
+            image_data=image_data,
+            image_mime_type=safe_mime_type,
+            task=task
+        )
+        
+        logger.info(f"reference-to-video generation successful: {result['filename']}")
+
+    except VideoSubmissionRateLimitError as e:
+        logger.error(f"Model quota exceeded: {e}")
+        await ctx.error(f"Generation failed due to quota limit:{str(e)}")
+        raise
+
+    except Exception as e:
+        logger.error(f"Generation failed: {e}")
+        await ctx.error(f"Generation failed: {str(e)}")
+        raise
+
+    try:    
+        logger.info("Trying S3 upload")
+          
+        
+        s3_response = await upload_file(local_path=result['filename'], ctx=ctx)
+        result["url"] = s3_response.url
+        logger.info("s3 upload done")
+
+        return VideoGenerationResponse(**result)
+        
+    except Exception as e:
+        await ctx.error(f"reference-to-video generated. but upload failed: {str(e)}")
+        raise ValueError(f"reference-to-video generated. but upload failed: {str(e)}")
+
 
 
 @mcp.tool()
