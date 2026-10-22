@@ -428,15 +428,19 @@ async def generate_video_with_progress(
                     }
                 }
 
+            response_format = {
+                "type": "video",
+                "resolution": "720p"
+            }
+
+            if task=="text_to_video" or "image_to_video" or "reference_to_video":
+                response_format["aspect_ratio"] = "16:9"
+
             interaction = await asyncio.to_thread(
                 gemini_client.interactions.create,
                 model=model,
                 input=interaction_input,
-                response_format={
-                    "type": "video",
-                    "resolution": "720p",
-                    "aspect_ratio": "16:9"
-                },
+                response_format=response_format,
                 **extra_kwargs
             )
 
