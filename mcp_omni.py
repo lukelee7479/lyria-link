@@ -137,6 +137,226 @@ def detect_image_mime(image_data: bytes) -> str:
 
     return mime_type
 
+def _download_edit_video(
+    video_url: str,
+    destination: Path,
+    max_bytes: int = 30 * 1024 * 1024,
+) -> None:
+    """Download an MP4 from the configured S3 bucket or CloudFront host."""
+    clean_url = video_url.strip().replace("&amp;", "&")
+    parsed = urlparse(clean_url)
+    host = (parsed.hostname or "").lower()
+    bucket = (BUCKET or "").lower()
+    key = None
+
+    if parsed.username or parsed.password or parsed.fragment:
+        raise ValueError(
+            "User information and fragments are not supported"
+        )
+
+    if parsed.scheme not in ("https", "s3"):
+        raise ValueError(
+            "Use an HTTPS S3/CloudFront URL or s3://bucket/key"
+        )
+
+    if parsed.port not in (None, 443):
+        raise ValueError("Only the standard HTTPS port is supported")
+
+    s3_endpoint = r"s3(?:[.-][a-z0-9-]+)*\.amazonaws\.com(?:\.cn)?"
+
+    if parsed.scheme == "s3":
+        if not bucket or host != bucket:
+            raise ValueError("The S3 bucket must match --bucket")
+
+        key = unquote(parsed.path[1:])
+
+    elif (
+        bucket
+        and host.startswith(bucket + ".")
+        and re.fullmatch(s3_endpoint, host[len(bucket) + 1:])
+    ):
+        key = unquote(parsed.path[1:])
+
+    elif re.fullmatch(s3_endpoint, host):
+        prefix = f"/{bucket}/"
+
+        if not bucket or not parsed.path.startswith(prefix):
+            raise ValueError("The S3 bucket must match --bucket")
+
+        key = unquote(parsed.path[len(prefix):])
+
+    else:
+        configured = (
+            getattr(s3_args, "cloudfront", None) or ""
+        ).strip()
+
+        cf_host = urlparse(
+            configured
+            if "://" in configured
+            else "https://" + configured
+        ).hostname
+
+        if not cf_host or host != cf_host.lower():
+            raise ValueError(
+                "URL must use the configured S3 bucket "
+                "or --cloudfront host"
+            )
+
+    if key == "" or not parsed.path or parsed.path.endswith("/"):
+        raise ValueError("The URL must identify a video object")
+
+    def save_chunks(chunks, content_length=None):
+        if (
+            content_length is not None
+            and int(content_length) > max_bytes
+        ):
+            raise ValueError(
+                "Input video exceeds the configured download size limit"
+            )
+
+        total = 0
+
+        with destination.open("wb") as output:
+            for chunk in chunks:
+                if not chunk:
+                    continue
+
+                total += len(chunk)
+
+                if total > max_bytes:
+                    raise ValueError(
+                        "Input video exceeds the configured "
+                        "download size limit"
+                    )
+
+                output.write(chunk)
+
+        if total == 0:
+            raise ValueError("Downloaded video is empty")
+
+    if key is not None:
+        try:
+            request = {
+                "Bucket": BUCKET,
+                "Key": key
+            }
+
+            version = parse_qs(parsed.query).get("versionId")
+            if version:
+                request["VersionId"] = version[0]
+
+            response = s3.get_object(**request)
+            body = response["Body"]
+
+            try:
+                save_chunks(
+                    body.iter_chunks(chunk_size=1024 * 1024),
+                    response.get("ContentLength")
+                )
+            finally:
+                body.close()
+
+            return
+
+        except (BotoCoreError, ClientError) as exc:
+            if parsed.scheme == "s3":
+                raise
+
+            logger.warning(
+                "S3 SDK download failed (%s); "
+                "trying the supplied HTTPS URL",
+                type(exc).__name__
+            )
+
+    # Do not reconstruct or discard the signed query string.
+    try:
+        with httpx.stream(
+            "GET",
+            clean_url,
+            timeout=httpx.Timeout(60.0, connect=10.0),
+            follow_redirects=False,
+        ) as response:
+            response.raise_for_status()
+
+            content_type = (
+                response.headers.get("content-type", "")
+                .split(";")[0]
+                .lower()
+            )
+
+            if content_type not in (
+                "",
+                "video/mp4",
+                "application/mp4",
+                "application/octet-stream",
+            ):
+                raise ValueError(
+                    "The URL did not return an MP4 video"
+                )
+
+            save_chunks(
+                response.iter_bytes(chunk_size=1024 * 1024),
+                response.headers.get("content-length")
+            )
+
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(
+            f"Video download failed: HTTP {exc.response.status_code}"
+        ) from None
+
+    except httpx.RequestError as exc:
+        raise RuntimeError(
+            f"Video download failed: {type(exc).__name__}"
+        ) from None
+
+async def _wait_for_edit_video(
+    video_file,
+    ctx: Context,
+    poll_interval: float = 5.0,
+    max_wait: float = 70.0,
+):
+    """Wait for an uploaded Google file to become ACTIVE."""
+    deadline = time.monotonic() + max_wait
+
+    while True:
+        state = getattr(video_file, "state", None)
+        state = getattr(state, "name", state)
+
+        if state == "ACTIVE":
+            if not getattr(video_file, "uri", None):
+                raise RuntimeError(
+                    "Google file is ACTIVE but has no URI"
+                )
+
+            return video_file
+
+        if state == "FAILED":
+            raise RuntimeError(
+                "Google could not process the uploaded video"
+            )
+
+        if state != "PROCESSING":
+            raise RuntimeError(
+                f"Unexpected Google file state: {state}"
+            )
+
+        remaining = deadline - time.monotonic()
+
+        if remaining <= 0:
+            raise TimeoutError(
+                "Timed out waiting for Google video processing"
+            )
+
+        await ctx.info(
+            "Waiting for Google to process the uploaded video..."
+        )
+
+        await asyncio.sleep(min(poll_interval, remaining))
+
+        video_file = await asyncio.to_thread(
+            gemini_client.files.get,
+            name=video_file.name
+        )
 
 async def generate_video_with_progress(
     prompt: str,
@@ -674,7 +894,170 @@ async def generate_video_from_reference(
         await ctx.error(f"reference-to-video generated. but upload failed: {str(e)}")
         raise ValueError(f"reference-to-video generated. but upload failed: {str(e)}")
 
+@mcp.tool(
+    description=(
+        "Edit an existing MP4 video using a text instruction "
+        "and return a new video URL. "
+        "Use this tool to change objects, backgrounds, lighting, "
+        "or visual effects in an existing clip, not to animate "
+        "a still image or generate a video from image references. "
+        "Provide one video URL from the configured S3 bucket "
+        "or CloudFront host. "
+        "The source video must be at most 10 seconds long. "
+        "In prompt, describe the requested edit and what "
+        "should remain unchanged. "
+        "The source video is uploaded to Google for processing. "
+        "The original S3 object is not overwritten. "
+        "Returns the edited video URL and metadata."
+    )
+)
+async def edit_video(
+    prompt: str,
+    video_url: str,
+    ctx: Context,
+    model: str = "gemini-omni-1.1-flash",
+) -> VideoGenerationResponse:
+    """Edit one uploaded video; --model overrides the tool's model."""
 
+    if not prompt.strip():
+        raise ValueError("Prompt cannot be empty")
+
+    if not video_url.strip():
+        raise ValueError("Video URL cannot be empty")
+
+    input_dir = Path(OUTPUT_DIR) / ".edit-inputs"
+    input_dir.mkdir(parents=True, exist_ok=True)
+
+    fd, path = tempfile.mkstemp(
+        prefix="source_",
+        suffix=".mp4",
+        dir=input_dir
+    )
+    os.close(fd)
+
+    source_path = Path(path)
+
+    google_file_name = None
+    edit_started = False
+    edit_finished = False
+    cancelled = False
+
+    stage = "source download"
+
+    try:
+        await ctx.info("Downloading the source video...")
+
+        await asyncio.to_thread(
+            _download_edit_video,
+            video_url,
+            source_path
+        )
+
+        stage = "Google file upload"
+
+        await ctx.info(
+            "Uploading the source video to Google Files API..."
+        )
+
+        video_file = await asyncio.to_thread(
+            gemini_client.files.upload,
+            file=str(source_path),
+            config={"mime_type": "video/mp4"},
+        )
+
+        google_file_name = getattr(video_file, "name", None)
+
+        if not google_file_name:
+            raise RuntimeError(
+                "Google file upload returned no file name"
+            )
+
+        stage = "Google file processing"
+
+        video_file = await _wait_for_edit_video(
+            video_file,
+            ctx
+        )
+
+        stage = "video editing"
+
+        task = "edit"
+        edit_started = True
+
+        result = await generate_video_with_progress(
+            prompt=prompt,
+            model=model,
+            ctx=ctx,
+            video_uri=video_file.uri,
+            task=task,
+        )
+
+        edit_finished = True
+        stage = "edited video S3 upload"
+
+        await ctx.info("Uploading the edited video to S3...")
+
+        s3_response = await upload_file(
+            local_path=result["filename"],
+            ctx=ctx
+        )
+
+        result["url"] = s3_response.url
+
+        return VideoGenerationResponse(**result)
+
+    except asyncio.CancelledError:
+        cancelled = True
+        raise
+
+    except Exception as exc:
+        logger.exception(
+            "Video edit failed during %s",
+            stage
+        )
+
+        try:
+            await ctx.error(
+                f"Video edit failed during {stage}: {exc}"
+            )
+        except Exception:
+            logger.warning(
+                "Could not report the video edit error"
+            )
+
+        raise
+
+    finally:
+        # A cancelled to_thread call may still be using this file.
+        if not cancelled:
+            try:
+                source_path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning(
+                    "Could not remove the temporary source video"
+                )
+        else:
+            logger.warning(
+                "Call cancelled; temporary input retained at %s",
+                source_path
+            )
+
+        # Do not delete input needed by an uncertain/in-flight edit.
+        if (
+            google_file_name
+            and not cancelled
+            and (not edit_started or edit_finished)
+        ):
+            try:
+                await asyncio.to_thread(
+                    gemini_client.files.delete,
+                    name=google_file_name
+                )
+            except Exception:
+                logger.warning(
+                    "Could not delete the temporary Google file: %s",
+                    google_file_name
+                )
 
 @mcp.tool()
 async def list_generated_videos(ctx: Context) -> VideoListResponse:
