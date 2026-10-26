@@ -431,11 +431,11 @@ async def generate_video_with_progress(
         await ctx.report_progress(progress=5, total=100)
 
         try:
-            if task =="edit" and previous_interaction_id:
-              interaction_input = None
-              
-            elif task == "edit":
-                if not video_uri:
+            if task in ("edit", "extend"):
+                if previous_interaction_id:
+                    interaction_input = None
+
+                elif not video_uri:
                     raise ValueError(
                         "task='edit' requires a processed Google video URI"
                     )
@@ -1193,6 +1193,231 @@ async def edit_video(
                     "Could not delete the temporary Google file: %s",
                     google_file_name
                 )
+
+@mcp.tool(
+    description=(
+        "Extend an existing MP4 video by generating a natural continuation "
+        "from the end of the source clip. "
+        "Use this tool when the user wants the current video to continue beyond "
+        "its ending, such as continuing a person's movement, extending camera motion, "
+        "or showing what happens next in the same scene. "
+        "Do not use this tool to modify objects, colors, backgrounds, or other content "
+        "inside the existing portion of the video; use edit_video for those requests. "
+        "Provide one video URL from the configured S3 bucket or CloudFront host. "
+        "In prompt, describe what should happen after the current ending and specify "
+        "any subject motion, camera movement, scene continuity, or elements that "
+        "should remain consistent. "
+        "The original video is not overwritten. "
+        "Returns the extended video URL and metadata."
+    )
+)
+async def extend_video(
+    prompt: str,
+    video_url: str,
+    ctx: Context,
+    model: str = "gemini-omni-1.1-flash",
+) -> VideoGenerationResponse:
+    """Edit one uploaded video; --model overrides the tool's model."""
+
+    if not prompt.strip():
+        raise ValueError("Prompt cannot be empty")
+
+    if not video_url.strip():
+        raise ValueError("Video URL cannot be empty")
+      
+    previous_interaction_id = (
+        extract_interaction_id_from_video_url(video_url)
+    )
+
+    task = "extend"
+  
+    #Fast path with stored interaction ID
+    if previous_interaction_id:
+        await ctx.info(
+            "Interaction ID found in video URL. "
+            "Trying stateful video editing without downloading."
+        )
+      
+        try:
+            result = await generate_video_with_progress(
+                prompt=prompt,
+                model=model,
+                ctx=ctx,
+                task=task,
+                previous_interaction_id=previous_interaction_id
+            )
+
+            s3_response = await upload_file(
+                local_path=result["filename"],
+                ctx=ctx
+            )
+
+            result["url"] = s3_response.url
+
+            return VideoGenerationResponse(**result)
+
+        except Exception as e:
+            error_text = str(e).lower()
+        
+            error_code = getattr(e, "code", None)
+        
+            interaction_missing = (
+                error_code in (400, 404)
+                or "not_found" in error_text
+                or "requested entity was not found" in error_text
+            )
+        
+            if not interaction_missing:
+                raise
+        
+            logger.warning(
+                "Stored interaction unavailable. "
+                "Falling back to S3 video upload. "
+                "error_type=%s, error_code=%s",
+                type(e).__name__,
+                error_code,
+            )
+        
+            await ctx.info(
+                "Stored interaction is unavailable. "
+                "Falling back to uploaded-video editing."
+            )
+
+    #Fallback to download
+  
+    input_dir = Path(OUTPUT_DIR) / ".edit-inputs"
+    input_dir.mkdir(parents=True, exist_ok=True)
+
+    fd, path = tempfile.mkstemp(
+        prefix="source_",
+        suffix=".mp4",
+        dir=input_dir
+    )
+    os.close(fd)
+
+    source_path = Path(path)
+
+    google_file_name = None
+    edit_started = False
+    edit_finished = False
+    cancelled = False
+
+    stage = "source download"
+
+    try:
+        await ctx.info("Downloading the source video...")
+
+        await asyncio.to_thread(
+            _download_edit_video,
+            video_url,
+            source_path
+        )
+
+        stage = "Google file upload"
+
+        await ctx.info(
+            "Uploading the source video to Google Files API..."
+        )
+
+        video_file = await asyncio.to_thread(
+            gemini_client.files.upload,
+            file=str(source_path),
+            config={"mime_type": "video/mp4"},
+        )
+
+        google_file_name = getattr(video_file, "name", None)
+
+        if not google_file_name:
+            raise RuntimeError(
+                "Google file upload returned no file name"
+            )
+
+        stage = "Google file processing"
+
+        video_file = await _wait_for_edit_video(
+            video_file,
+            ctx
+        )
+
+        stage = "video editing"
+
+        edit_started = True
+
+        result = await generate_video_with_progress(
+            prompt=prompt,
+            model=model,
+            ctx=ctx,
+            video_uri=video_file.uri,
+            task=task,
+        )
+
+        edit_finished = True
+        stage = "edited video S3 upload"
+
+        await ctx.info("Uploading the edited video to S3...")
+
+        s3_response = await upload_file(
+            local_path=result["filename"],
+            ctx=ctx
+        )
+
+        result["url"] = s3_response.url
+
+        return VideoGenerationResponse(**result)
+
+    except asyncio.CancelledError:
+        cancelled = True
+        raise
+
+    except Exception as exc:
+        logger.exception(
+            "Video edit failed during %s",
+            stage
+        )
+
+        try:
+            await ctx.error(
+                f"Video edit failed during {stage}: {exc}"
+            )
+        except Exception:
+            logger.warning(
+                "Could not report the video edit error"
+            )
+
+        raise
+
+    finally:
+        # A cancelled to_thread call may still be using this file.
+        if not cancelled:
+            try:
+                source_path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning(
+                    "Could not remove the temporary source video"
+                )
+        else:
+            logger.warning(
+                "Call cancelled; temporary input retained at %s",
+                source_path
+            )
+
+        # Do not delete input needed by an uncertain/in-flight edit.
+        if (
+            google_file_name
+            and not cancelled
+            and (not edit_started or edit_finished)
+        ):
+            try:
+                await asyncio.to_thread(
+                    gemini_client.files.delete,
+                    name=google_file_name
+                )
+            except Exception:
+                logger.warning(
+                    "Could not delete the temporary Google file: %s",
+                    google_file_name
+                )
+
 
 @mcp.tool()
 async def list_generated_videos(ctx: Context) -> VideoListResponse:
