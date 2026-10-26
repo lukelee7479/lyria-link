@@ -414,7 +414,7 @@ async def generate_video_with_progress(
     image_data: Optional[bytes] = None,
     image_mime_type: Optional[str] = None,
     task: Optional[str] = None,
-    video_uri: Optional[str] = None
+    video_uri: Optional[str] = None,
     previous_interaction_id: Optional[str] = None
 ) -> dict:
     """Generate a video using Gemini Omni Flash"""
@@ -486,7 +486,7 @@ async def generate_video_with_progress(
             if task in ("text_to_video", "image_to_video", "reference_to_video"):
                 response_format["aspect_ratio"] = "16:9"
 
-            if task in ("edit") and previous_interaction_id:
+            if task in ("edit", "extend") and previous_interaction_id:
                 interaction = await asyncio.to_thread(
                     gemini_client.interactions.create,
                     model=model,
@@ -567,7 +567,7 @@ async def generate_video_with_progress(
             "negative_prompt": None,
             "generation_time": generation_time,
             "file_size": file_size,
-            "aspect_ratio": Optional[str],
+            "aspect_ratio": "16:9",
         }
 
     except Exception as e:
@@ -1001,6 +1001,9 @@ async def edit_video(
     previous_interaction_id = (
         extract_interaction_id_from_video_url(video_url)
     )
+
+    task = "edit"
+  
     #Fast path with stored interaction ID
     if previous_interaction_id:
         await ctx.info(
@@ -1013,6 +1016,7 @@ async def edit_video(
                 prompt=prompt,
                 model=model,
                 ctx=ctx,
+                task=task,
                 previous_interaction_id=previous_interaction_id
             )
 
@@ -1102,7 +1106,6 @@ async def edit_video(
 
         stage = "video editing"
 
-        task = "edit"
         edit_started = True
 
         result = await generate_video_with_progress(
