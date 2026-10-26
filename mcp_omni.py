@@ -489,7 +489,16 @@ async def generate_video_with_progress(
             if task in ("text_to_video", "image_to_video", "reference_to_video"):
                 response_format["aspect_ratio"] = "16:9"
 
-            if task in ("edit", "extend") and previous_interaction_id:
+            if task =="edit" and previous_interaction_id:
+                interaction = await asyncio.to_thread(
+                    gemini_client.interactions.create,
+                    model=model,
+                    previous_interaction_id=previous_interaction_id,
+                    input=prompt,
+                    response_format=response_format,
+                    store=True,
+                )
+            elif task =="extend" and previous_interaction_id:
                 interaction = await asyncio.to_thread(
                     gemini_client.interactions.create,
                     model=model,
