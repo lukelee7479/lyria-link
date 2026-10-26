@@ -47,6 +47,7 @@ parser.add_argument("--model", required=False, help="in case of omni deprecation
 args, unknown = parser.parse_known_args()
 
 OUTPUT_DIR = os.path.abspath(os.path.expanduser(args.output_dir))
+INTERACTION_ID_MARKER = "__iid_"
 
 # Get API key from CLI args or environment
 API_KEY = args.api_key 
@@ -136,6 +137,54 @@ def detect_image_mime(image_data: bytes) -> str:
         img.verify()
 
     return mime_type
+  
+def encode_interaction_id(interaction_id: str) -> str:
+    """Encode an opaque interaction ID into a filename-safe string."""
+    encoded = base64.urlsafe_b64encode(
+        interaction_id.encode("utf-8")
+    ).decode("ascii")
+
+    return encoded.rstrip("=")
+
+
+def decode_interaction_id(encoded_id: str) -> Optional[str]:
+    """Decode a filename-safe interaction ID."""
+    try:
+        padding = "=" * (-len(encoded_id) % 4)
+
+        return base64.urlsafe_b64decode(
+            encoded_id + padding
+        ).decode("utf-8")
+
+    except Exception:
+        return None
+      
+def extract_interaction_id_from_video_url(
+    video_url: str
+) -> Optional[str]:
+    """Extract an encoded interaction ID from an MCP-generated video URL."""
+    try:
+        clean_url = video_url.strip().replace("&amp;", "&")
+        parsed = urlparse(clean_url)
+
+        filename = unquote(
+            Path(parsed.path).name
+        )
+
+        match = re.search(
+            r"__iid_([A-Za-z0-9_-]+)\.mp4$",
+            filename
+        )
+
+        if not match:
+            return None
+
+        encoded_id = match.group(1)
+
+        return decode_interaction_id(encoded_id)
+
+    except Exception:
+        return None
 
 def _download_edit_video(
     video_url: str,
@@ -366,6 +415,7 @@ async def generate_video_with_progress(
     image_mime_type: Optional[str] = None,
     task: Optional[str] = None,
     video_uri: Optional[str] = None
+    previous_interaction_id: Optional[str] = None
 ) -> dict:
     """Generate a video using Gemini Omni Flash"""
 
@@ -436,13 +486,25 @@ async def generate_video_with_progress(
             if task in ("text_to_video", "image_to_video", "reference_to_video"):
                 response_format["aspect_ratio"] = "16:9"
 
-            interaction = await asyncio.to_thread(
-                gemini_client.interactions.create,
-                model=model,
-                input=interaction_input,
-                response_format=response_format,
-                **extra_kwargs
-            )
+            if task in ("edit") and previous_interaction_id:
+                interaction = await asyncio.to_thread(
+                    gemini_client.interactions.create,
+                    model=model,
+                    previous_interaction_id=previous_interaction_id,
+                    input=prompt,
+                    response_format=response_format,
+                    store=True
+                )
+            else:
+                interaction = await asyncio.to_thread(
+                    gemini_client.interactions.create,
+                    model=model,
+                    input=interaction_input,
+                    response_format=response_format,
+                    store=True,
+                    **extra_kwargs
+                )
+                
 
         except genai_errors.APIError as e:
             if e.code == 429:
@@ -466,7 +528,14 @@ async def generate_video_with_progress(
         output_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"omni_video_{timestamp}_{uuid.uuid4().hex}.mp4"
+
+        interaction_id=getattr(interaction, "id", None)
+        if interaction_id:
+            encoded_interaction_id = encode_interaction_id(interaction_id)
+            filename = f"omni_video_{timestamp}{INTERACTION_ID_MARKER}{encoded_interaction_id}.mp4"
+        else:
+            filename = f"omni_video_{timestamp}_{uuid.uuid4().hex}.mp4"
+          
         output_path = output_dir / filename
 
         await ctx.info(f"Saving video to: {output_path}")
@@ -498,7 +567,7 @@ async def generate_video_with_progress(
             "negative_prompt": None,
             "generation_time": generation_time,
             "file_size": file_size,
-            "aspect_ratio": "16:9"
+            "aspect_ratio": Optional[str],
         }
 
     except Exception as e:
@@ -928,7 +997,55 @@ async def edit_video(
 
     if not video_url.strip():
         raise ValueError("Video URL cannot be empty")
+      
+    previous_interaction_id = (
+        extract_interaction_id_from_video_url(video_url)
+    )
+    #Fast path with stored interaction ID
+    if previous_interaction_id:
+        await ctx.info(
+            "Interaction ID found in video URL. "
+            "Trying stateful video editing without downloading."
+        )
+      
+        try:
+            result = await generate_video_with_progress(
+                prompt=prompt,
+                model=model,
+                ctx=ctx,
+                previous_interaction_id=previous_interaction_id
+            )
 
+            s3_response = await upload_file(
+                local_path=result["filename"],
+                ctx=ctx
+            )
+
+            result["url"] = s3_response.url
+
+            return VideoGenerationResponse(**result)
+
+        except genai_errors.APIError as e:
+            error_text = str(e).lower()
+
+            interaction_missing = (
+                e.code == 404 or e.code == 400
+            )
+
+            if not interaction_missing:
+                raise
+
+            logger.warning(
+                "Stored interaction unavailable. "
+                "Falling back to S3 video upload."
+            )
+
+            await ctx.info(
+                "Stored interaction is no longer available. "
+                "Falling back to uploaded-video editing."
+            )
+    #Fallback to download
+  
     input_dir = Path(OUTPUT_DIR) / ".edit-inputs"
     input_dir.mkdir(parents=True, exist_ok=True)
 
