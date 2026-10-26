@@ -1032,25 +1032,33 @@ async def edit_video(
 
             return VideoGenerationResponse(**result)
 
-        except genai_errors.APIError as e:
+        except Exception as e:
             error_text = str(e).lower()
-
+        
+            error_code = getattr(e, "code", None)
+        
             interaction_missing = (
-                e.code == 404 or e.code == 400
+                error_code in (400, 404)
+                or "not_found" in error_text
+                or "requested entity was not found" in error_text
             )
-
+        
             if not interaction_missing:
                 raise
-
+        
             logger.warning(
                 "Stored interaction unavailable. "
-                "Falling back to S3 video upload."
+                "Falling back to S3 video upload. "
+                "error_type=%s, error_code=%s",
+                type(e).__name__,
+                error_code,
             )
-
+        
             await ctx.info(
-                "Stored interaction is no longer available. "
+                "Stored interaction is unavailable. "
                 "Falling back to uploaded-video editing."
             )
+
     #Fallback to download
   
     input_dir = Path(OUTPUT_DIR) / ".edit-inputs"
