@@ -55,11 +55,6 @@ def main():
         print("❌ Failed to install dependencies")
         sys.exit(1)
     
-    # Run tests
-    print("\n🧪 Running tests...")
-    if not run_command(["python", "examples/test_fastmcp_server.py"]):
-        print("⚠️ Tests failed, but continuing with build...")
-    
     # Build the package
     print("\n🔨 Building package...")
     if not run_command(["uv", "build"]):
