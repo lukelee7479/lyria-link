@@ -437,7 +437,7 @@ async def generate_video_with_progress(
 
                 elif not video_uri:
                     raise ValueError(
-                        "task='edit' requires a processed Google video URI"
+                        f"task='{task}' requires a processed Google video URI"
                     )
                 else:
                     if not video_uri.strip():
@@ -496,7 +496,8 @@ async def generate_video_with_progress(
                     previous_interaction_id=previous_interaction_id,
                     input=prompt,
                     response_format=response_format,
-                    store=True
+                    store=True,
+                    **extra_kwargs
                 )
             else:
                 interaction = await asyncio.to_thread(
@@ -1217,7 +1218,7 @@ async def extend_video(
     ctx: Context,
     model: str = "gemini-omni-1.1-flash",
 ) -> VideoGenerationResponse:
-    """Edit one uploaded video; --model overrides the tool's model."""
+    """Extend one uploaded video; --model overrides the tool's model."""
 
     if not prompt.strip():
         raise ValueError("Prompt cannot be empty")
@@ -1235,7 +1236,7 @@ async def extend_video(
     if previous_interaction_id:
         await ctx.info(
             "Interaction ID found in video URL. "
-            "Trying stateful video editing without downloading."
+            "Trying stateful video extension without downloading."
         )
       
         try:
@@ -1280,7 +1281,7 @@ async def extend_video(
         
             await ctx.info(
                 "Stored interaction is unavailable. "
-                "Falling back to uploaded-video editing."
+                "Falling back to uploaded-video extension."
             )
 
     #Fallback to download
@@ -1339,7 +1340,7 @@ async def extend_video(
             ctx
         )
 
-        stage = "video editing"
+        stage = "video extension"
 
         edit_started = True
 
@@ -1352,7 +1353,7 @@ async def extend_video(
         )
 
         edit_finished = True
-        stage = "edited video S3 upload"
+        stage = "extended video S3 upload"
 
         await ctx.info("Uploading the edited video to S3...")
 
@@ -1371,17 +1372,17 @@ async def extend_video(
 
     except Exception as exc:
         logger.exception(
-            "Video edit failed during %s",
+            "Video extension failed during %s",
             stage
         )
 
         try:
             await ctx.error(
-                f"Video edit failed during {stage}: {exc}"
+                f"Video extension failed during {stage}: {exc}"
             )
         except Exception:
             logger.warning(
-                "Could not report the video edit error"
+                "Could not report the video extension error"
             )
 
         raise
