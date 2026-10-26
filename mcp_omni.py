@@ -1024,15 +1024,6 @@ async def edit_video(
                 previous_interaction_id=previous_interaction_id
             )
 
-            s3_response = await upload_file(
-                local_path=result["filename"],
-                ctx=ctx
-            )
-
-            result["url"] = s3_response.url
-
-            return VideoGenerationResponse(**result)
-
         except Exception as e:
             error_text = str(e).lower()
         
@@ -1061,6 +1052,17 @@ async def edit_video(
                 "Stored interaction is unavailable. "
                 "Falling back to uploaded-video editing."
             )
+
+        else:
+            s3_response = await upload_file(
+            local_path=result["filename"],
+            ctx=ctx
+            )
+
+            result["url"] = s3_response.url
+
+            return VideoGenerationResponse(**result)
+
 
     #Fallback to download
   
@@ -1250,15 +1252,6 @@ async def extend_video(
                 previous_interaction_id=previous_interaction_id
             )
 
-            s3_response = await upload_file(
-                local_path=result["filename"],
-                ctx=ctx
-            )
-
-            result["url"] = s3_response.url
-
-            return VideoGenerationResponse(**result)
-
         except Exception as e:
             error_text = str(e).lower()
         
@@ -1287,6 +1280,15 @@ async def extend_video(
                 "Stored interaction is unavailable. "
                 "Falling back to uploaded-video extension."
             )
+        else:
+            s3_response = await upload_file(
+            local_path=result["filename"],
+            ctx=ctx
+            )
+
+            result["url"] = s3_response.url
+
+            return VideoGenerationResponse(**result)
 
     #Fallback to download
   
