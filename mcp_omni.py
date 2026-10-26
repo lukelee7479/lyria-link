@@ -1039,9 +1039,11 @@ async def edit_video(
             error_code = getattr(e, "code", None)
         
             interaction_missing = (
-                error_code in (400, 404)
+                error_code in (400, 403, 404)
                 or "not_found" in error_text
                 or "requested entity was not found" in error_text
+                or "do not have permission to access the file" in error_text
+                or "it may not exist" in error_text
             )
         
             if not interaction_missing:
@@ -1182,7 +1184,7 @@ async def edit_video(
         if (
             google_file_name
             and not cancelled
-            and (not edit_started or edit_finished)
+            and not edit_finished
         ):
             try:
                 await asyncio.to_thread(
@@ -1263,9 +1265,11 @@ async def extend_video(
             error_code = getattr(e, "code", None)
         
             interaction_missing = (
-                error_code in (400, 404)
+                error_code in (400, 403, 404)
                 or "not_found" in error_text
                 or "requested entity was not found" in error_text
+                or "do not have permission to access the file" in error_text
+                or "it may not exist" in error_text
             )
         
             if not interaction_missing:
@@ -1406,7 +1410,7 @@ async def extend_video(
         if (
             google_file_name
             and not cancelled
-            and (not edit_started or edit_finished)
+            and not edit_finished
         ):
             try:
                 await asyncio.to_thread(
