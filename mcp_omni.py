@@ -431,7 +431,10 @@ async def generate_video_with_progress(
         await ctx.report_progress(progress=5, total=100)
 
         try:
-            if task == "edit":
+            if task =="edit" and previous_interaction_id:
+              interaction_input = None
+              
+            elif task == "edit":
                 if not video_uri:
                     raise ValueError(
                         "task='edit' requires a processed Google video URI"
