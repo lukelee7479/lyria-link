@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-MCP Veo 3 Video Generator - A Model Context Protocol server for Veo 3 video generation
+MCP Lyria 3 audio Generator - A Model Context Protocol server for Lyria 3 audio generation
 Usage:
-  python mcp_veo3.py --output-dir ~/Videos/Generated
+  python mcp_Lyria3.py --output-dir ~/audios/Generated
 """
 
 import argparse
@@ -41,7 +41,7 @@ load_dotenv()
 
 # Parse CLI arguments
 parser = argparse.ArgumentParser()
-parser.add_argument("--output-dir", required=True, help="Directory to save generated videos")
+parser.add_argument("--output-dir", required=True, help="Directory to save generated audios")
 parser.add_argument("--api-key", help="Gemini API key (overrides .env)")
 parser.add_argument("--model", required=False, help="in case of omni deprecation, manually input the new model name")
 args, unknown = parser.parse_known_args()
@@ -64,10 +64,10 @@ if not API_KEY:
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("mcp-veo3")
+logger = logging.getLogger("mcp-Lyria3")
 
 # Initialize FastMCP
-mcp = FastMCP("MCP Veo 3 Video Generator")
+mcp = FastMCP("MCP Lyria 3 audio Generator")
 
 # Initialize Gemini client
 if not genai:
@@ -76,8 +76,8 @@ if not genai:
 gemini_client = genai.Client(api_key=API_KEY)
 
 
-class VideoGenerationResponse(BaseModel):
-    video_path: str
+class audioGenerationResponse(BaseModel):
+    audio_path: str
     filename: str
     model: str
     prompt: str
@@ -88,20 +88,20 @@ class VideoGenerationResponse(BaseModel):
     url: str
 
 
-class VideoListResponse(BaseModel):
-    videos: list[dict]
+class audioListResponse(BaseModel):
+    audios: list[dict]
     total_count: int
     output_dir: str
 
 
-class VideoInfoResponse(BaseModel):
+class audioInfoResponse(BaseModel):
     filename: str
     path: str
     size: int
     created: str
     modified: str
 
-class VideoSubmissionRateLimitError(RuntimeError):
+class audioSubmissionRateLimitError(RuntimeError):
     """영상 생성 요청이 한도 초과 429로 거절된 경우"""
 
 def safe_join(root: str, user_path: str) -> str:
@@ -159,12 +159,12 @@ def decode_interaction_id(encoded_id: str) -> Optional[str]:
     except Exception:
         return None
       
-def extract_interaction_id_from_video_url(
-    video_url: str
+def extract_interaction_id_from_audio_url(
+    audio_url: str
 ) -> Optional[str]:
-    """Extract an encoded interaction ID from an MCP-generated video URL."""
+    """Extract an encoded interaction ID from an MCP-generated audio URL."""
     try:
-        clean_url = video_url.strip().replace("&amp;", "&")
+        clean_url = audio_url.strip().replace("&amp;", "&")
         parsed = urlparse(clean_url)
 
         filename = unquote(
@@ -172,7 +172,7 @@ def extract_interaction_id_from_video_url(
         )
 
         match = re.search(
-            r"__iid_([A-Za-z0-9_-]+)\.mp4$",
+            r"__iid_([A-Za-z0-9_-]+)\.mp3$",
             filename
         )
 
@@ -186,13 +186,13 @@ def extract_interaction_id_from_video_url(
     except Exception:
         return None
 
-def _download_edit_video(
-    video_url: str,
+def _download_edit_audio(
+    audio_url: str,
     destination: Path,
     max_bytes: int = 30 * 1024 * 1024,
 ) -> None:
-    """Download an MP4 from the configured S3 bucket or CloudFront host."""
-    clean_url = video_url.strip().replace("&amp;", "&")
+    """Download an mp3 from the configured S3 bucket or CloudFront host."""
+    clean_url = audio_url.strip().replace("&amp;", "&")
     parsed = urlparse(clean_url)
     host = (parsed.hostname or "").lower()
     bucket = (BUCKET or "").lower()
@@ -252,7 +252,7 @@ def _download_edit_video(
             )
 
     if key == "" or not parsed.path or parsed.path.endswith("/"):
-        raise ValueError("The URL must identify a video object")
+        raise ValueError("The URL must identify a audio object")
 
     def save_chunks(chunks, content_length=None):
         if (
@@ -260,7 +260,7 @@ def _download_edit_video(
             and int(content_length) > max_bytes
         ):
             raise ValueError(
-                "Input video exceeds the configured download size limit"
+                "Input audio exceeds the configured download size limit"
             )
 
         total = 0
@@ -274,14 +274,14 @@ def _download_edit_video(
 
                 if total > max_bytes:
                     raise ValueError(
-                        "Input video exceeds the configured "
+                        "Input audio exceeds the configured "
                         "download size limit"
                     )
 
                 output.write(chunk)
 
         if total == 0:
-            raise ValueError("Downloaded video is empty")
+            raise ValueError("Downloaded audio is empty")
 
     if key is not None:
         try:
@@ -335,12 +335,12 @@ def _download_edit_video(
 
             if content_type not in (
                 "",
-                "video/mp4",
-                "application/mp4",
+                "audio/mp3",
+                "application/mp3",
                 "application/octet-stream",
             ):
                 raise ValueError(
-                    "The URL did not return an MP4 video"
+                    "The URL did not return an mp3 audio"
                 )
 
             save_chunks(
@@ -350,16 +350,16 @@ def _download_edit_video(
 
     except httpx.HTTPStatusError as exc:
         raise RuntimeError(
-            f"Video download failed: HTTP {exc.response.status_code}"
+            f"audio download failed: HTTP {exc.response.status_code}"
         ) from None
 
     except httpx.RequestError as exc:
         raise RuntimeError(
-            f"Video download failed: {type(exc).__name__}"
+            f"audio download failed: {type(exc).__name__}"
         ) from None
 
-async def _wait_for_edit_video(
-    video_file,
+async def _wait_for_edit_audio(
+    audio_file,
     ctx: Context,
     poll_interval: float = 2.0,
     max_wait: float = 60.0,
@@ -368,20 +368,20 @@ async def _wait_for_edit_video(
     deadline = time.monotonic() + max_wait
 
     while True:
-        state = getattr(video_file, "state", None)
+        state = getattr(audio_file, "state", None)
         state = getattr(state, "name", state)
 
         if state == "ACTIVE":
-            if not getattr(video_file, "uri", None):
+            if not getattr(audio_file, "uri", None):
                 raise RuntimeError(
                     "Google file is ACTIVE but has no URI"
                 )
 
-            return video_file
+            return audio_file
 
         if state == "FAILED":
             raise RuntimeError(
-                "Google could not process the uploaded video"
+                "Google could not process the uploaded audio"
             )
 
         if state != "PROCESSING":
@@ -393,18 +393,18 @@ async def _wait_for_edit_video(
 
         if remaining <= 0:
             raise TimeoutError(
-                "Timed out waiting for Google video processing"
+                "Timed out waiting for Google audio processing"
             )
 
         await ctx.info(
-            "Waiting for Google to process the uploaded video..."
+            "Waiting for Google to process the uploaded audio..."
         )
 
         await asyncio.sleep(min(poll_interval, remaining))
 
-        video_file = await asyncio.to_thread(
+        audio_file = await asyncio.to_thread(
             gemini_client.files.get,
-            name=video_file.name
+            name=audio_file.name
         )
 
 async def generate_music_with_progress(
@@ -415,7 +415,7 @@ async def generate_music_with_progress(
     image_mime_type: Optional[str] = None,
     previous_interaction_id: Optional[str] = None
 ) -> dict:
-    """Generate a video using Gemini Omni Flash"""
+    """Generate a audio using Gemini Omni Flash"""
 
     start_time = time.time()
   
@@ -423,7 +423,7 @@ async def generate_music_with_progress(
         model = args.model
 
     try:
-        await ctx.info(f"Starting video generation with model: {model}")
+        await ctx.info(f"Starting audio generation with model: {model}")
         await ctx.info(f"Prompt: {prompt[:100]}...")
 
         await ctx.report_progress(progress=5, total=100)
@@ -461,7 +461,7 @@ async def generate_music_with_progress(
 
         except genai_errors.APIError as e:
             if e.code == 429:
-                raise VideoSubmissionRateLimitError(
+                raise audioSubmissionRateLimitError(
                     f"{model}: generation request rejected with HTTP 429"
                 ) from e
             raise
@@ -469,12 +469,12 @@ async def generate_music_with_progress(
         await ctx.report_progress(progress=90, total=100)
 
         if (
-            not hasattr(interaction, "output_video")
-            or interaction.output_video is None
-            or not interaction.output_video.data
+            not hasattr(interaction, "output_audio")
+            or interaction.output_audio is None
+            or not interaction.output_audio.data
         ):
             raise RuntimeError(
-                "Video generation failed - no video data in response"
+                "audio generation failed - no audio data in response"
             )
 
         output_dir = Path(OUTPUT_DIR)
@@ -485,23 +485,23 @@ async def generate_music_with_progress(
         interaction_id=getattr(interaction, "id", None)
         if interaction_id:
             encoded_interaction_id = encode_interaction_id(interaction_id)
-            filename = f"omni_video_{timestamp}{INTERACTION_ID_MARKER}{encoded_interaction_id}.mp4"
+            filename = f"lyria_music_{timestamp}{INTERACTION_ID_MARKER}{encoded_interaction_id}.mp3"
         else:
-            filename = f"omni_video_{timestamp}_{uuid.uuid4().hex}.mp4"
+            filename = f"lyria_music_{timestamp}_{uuid.uuid4().hex}.mp3"
           
         output_path = output_dir / filename
 
-        await ctx.info(f"Saving video to: {output_path}")
+        await ctx.info(f"Saving audio to: {output_path}")
 
-        video_bytes = base64.b64decode(
-            interaction.output_video.data
+        audio_bytes = base64.b64decode(
+            interaction.output_audio.data
         )
 
-        def _save_video():
+        def _save_audio():
             with open(output_path, "wb") as f:
-                f.write(video_bytes)
+                f.write(audio_bytes)
 
-        await asyncio.to_thread(_save_video)
+        await asyncio.to_thread(_save_audio)
 
         await ctx.report_progress(progress=100, total=100)
 
@@ -509,29 +509,30 @@ async def generate_music_with_progress(
         generation_time = time.time() - start_time
 
         await ctx.info(
-            f"Video generation completed in {generation_time:.1f} seconds"
+            f"audio generation completed in {generation_time:.1f} seconds"
         )
 
+        lyrics = interaction.output_text
+
         return {
-            "video_path": str(output_path),
+            "audio_path": str(output_path),
             "filename": filename,
             "model": model,
             "prompt": prompt,
-            "negative_prompt": None,
             "generation_time": generation_time,
             "file_size": file_size,
-            "aspect_ratio": "16:9",
+            "lyrics": lyrics
         }
 
     except Exception as e:
-        logger.exception("Video generation failed")
+        logger.exception("audio generation failed")
 
         try:
             await ctx.report_progress(progress=0, total=100)
-            await ctx.error(f"Video generation failed: {str(e)}")
+            await ctx.error(f"audio generation failed: {str(e)}")
         except Exception:
             logger.warning(
-                "Failed to report video generation error",
+                "Failed to report audio generation error",
                 exc_info=True
             )
 
@@ -541,53 +542,44 @@ async def generate_music_with_progress(
 async def generate_music(
     prompt: str,
     ctx: Context,
-    model: str = "gemini-omni-1.1-flash"
-) -> VideoGenerationResponse:
-    """Generate a video using omni flash from a text prompt
+    model: str = "lyria-3.5"
+) -> audioGenerationResponse:
+    """Generate a audio using lyria from a text prompt
     
     Args:
-        prompt: Text prompt describing the video to generate
-        model: video model to use 
+        prompt: Text prompt describing the audio to generate
+        model: audio model to use 
     
     Returns:
-        VideoGenerationResponse with video path, metadata, and generation info
+        audioGenerationResponse with audio path, metadata, and generation info
     """
     
-    await ctx.info(f"Starting video generation with prompt: {prompt[:100]}...")
+    await ctx.info(f"Starting audio generation with prompt: {prompt[:100]}...")
     
     if not prompt.strip():
         await ctx.error("Prompt cannot be empty")
         raise ValueError("Prompt cannot be empty")
-    """
-    # Validate model
-    valid_models = ["veo-3.1-lite-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-generate-preview" ]
-  
-    if model and model in valid_models:
-        models_to_try = [model] + [candidate for candidate in valid_models if candidate != model]
-    else:
-        models_to_try = valid_models
-    """
 
-    task = "text_to_video"
+    task = "text_to_audio"
     result = None
 
     try:
-        result = await generate_video_with_progress(
+        result = await generate_audio_with_progress(
             prompt=prompt,
             model=model,
             ctx=ctx,
             task = task
         )
         
-        logger.info(f"Video generated successfully: {result['filename']}")
+        logger.info(f"audio generated successfully: {result['filename']}")
       
-    except VideoSubmissionRateLimitError as e:
+    except audioSubmissionRateLimitError as e:
         logger.error(f"Model quota exceeded. {e}")
         await ctx.error(f"Generation failed due to quota limit: {str(e)}")
         raise
 
     except Exception as e:
-        logger.error(f"Video generation failed: {e}")
+        logger.error(f"audio generation failed: {e}")
         await ctx.error(f"Generation failed: {str(e)}")
         raise
             
@@ -598,11 +590,11 @@ async def generate_music(
         result["url"] = s3_response.url
         logger.info("s3 upload done")
 
-        return VideoGenerationResponse(**result)
+        return audioGenerationResponse(**result)
         
     except Exception as e:
-        await ctx.error(f"Video generated. but upload failed: {str(e)}")
-        raise ValueError(f"Video generated. but upload failed: {str(e)}")
+        await ctx.error(f"audio generated. but upload failed: {str(e)}")
+        raise ValueError(f"audio generated. but upload failed: {str(e)}")
             
 
 @mcp.tool(
@@ -614,20 +606,20 @@ async def generate_music_from_image(
     prompt: str,
     image_path: str,
     ctx: Context,
-    model: str = "gemini-omni-1.1-flash"
-) -> VideoGenerationResponse:
-    """Generate a video using Google omni flash from an image and text prompt
+    model: str = "lyria-3.5"
+) -> audioGenerationResponse:
+    """Generate a audio using Google lyria from an image and text prompt
     
     Args:
-        prompt: Text prompt describing the video motion/action
+        prompt: Text prompt describing the audio motion/action
         image_path: Path to the starting image file
-        model: Veo model to use 
+        model: Lyria model to use 
     
     Returns:
-        VideoGenerationResponse with video path, metadata, and generation info
+        audioGenerationResponse with audio path, metadata, and generation info
     """
     
-    await ctx.info(f"Starting image-to-video generation: {image_path}")
+    await ctx.info(f"Starting image-to-audio generation: {image_path}")
     
     if not prompt.strip():
         await ctx.error("Prompt cannot be empty")
@@ -712,11 +704,11 @@ async def generate_music_from_image(
         logger.exception(f"Unexpected error during image download/open: {e}")
         raise RuntimeError(f"Failed to download or open image: {str(e)}")
 
-    task = "image_to_video"
+    task = "image_to_audio"
     result = None
 
     try:
-        result = await generate_video_with_progress(
+        result = await generate_audio_with_progress(
             prompt=prompt,
             model=model,
             ctx=ctx,
@@ -725,9 +717,9 @@ async def generate_music_from_image(
             task=task
         )
         
-        logger.info(f"Image-to-video generation successful: {result['filename']}")
+        logger.info(f"Image-to-audio generation successful: {result['filename']}")
 
-    except VideoSubmissionRateLimitError as e:
+    except audioSubmissionRateLimitError as e:
         logger.error(f"Model quota exceeded: {e}")
         await ctx.error(f"Generation failed due to quota limit:{str(e)}")
         raise
@@ -745,15 +737,15 @@ async def generate_music_from_image(
         result["url"] = s3_response.url
         logger.info("s3 upload done")
 
-        return VideoGenerationResponse(**result)
+        return audioGenerationResponse(**result)
         
     except Exception as e:
-        await ctx.error(f"Image-to-video generated. but upload failed: {str(e)}")
-        raise ValueError(f"Image-to-video generated. but upload failed: {str(e)}")
+        await ctx.error(f"Image-to-audio generated. but upload failed: {str(e)}")
+        raise ValueError(f"Image-to-audio generated. but upload failed: {str(e)}")
 
 
 def main():
-    """Main entry point for the MCP Veo 3 server"""
+    """Main entry point for the MCP Lyria 3 server"""
     mcp.run()
 
 
