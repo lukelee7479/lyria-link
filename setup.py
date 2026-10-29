@@ -86,8 +86,8 @@ def test_installation():
     
     try:
         # Try importing the main module
-        import mcp_omni
-        print("✅ MCP omni module imports successfully")
+        import mcp_lyria
+        print("✅ MCP lyria module imports successfully")
         
         # Try importing dependencies
         import mcp.server.stdio
@@ -113,7 +113,7 @@ def print_next_steps():
     print("2. Test the installation:")
     print("   python examples/test_basic_generation.py")
     print("3. Run the MCP server:")
-    print("   python mcp_omni.py")
+    print("   python mcp_lyria.py")
     print("4. Add to your MCP client configuration:")
     print("   See README.md for configuration details")
     print("\n📚 Documentation:")
