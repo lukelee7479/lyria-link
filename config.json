@@ -4,7 +4,7 @@
   "description": "MCP Server for Google Veo 3 Video Generation",
   "server": {
     "command": "python",
-    "args": ["mcp_omni.py", "--output-dir", "~/Videos/Generated"],
+    "args": ["mcp_lyria.py", "--output-dir", "~/Videos/Generated"],
     "env": {
       "GEMINI_API_KEY": "${GEMINI_API_KEY}"
     }
