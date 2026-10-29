@@ -43,7 +43,7 @@ def test_package_structure():
     project_root = Path(__file__).parent
     required_files = [
         "pyproject.toml",
-        "mcp_omni.py",
+        "mcp_lyria.py",
         "__init__.py",
         "__main__.py",
         "README.md",
