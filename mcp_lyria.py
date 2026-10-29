@@ -560,15 +560,13 @@ async def generate_music(
         await ctx.error("Prompt cannot be empty")
         raise ValueError("Prompt cannot be empty")
 
-    task = "text_to_audio"
     result = None
 
     try:
         result = await generate_audio_with_progress(
             prompt=prompt,
             model=model,
-            ctx=ctx,
-            task = task
+            ctx=ctx
         )
         
         logger.info(f"audio generated successfully: {result['filename']}")
@@ -704,7 +702,6 @@ async def generate_music_from_image(
         logger.exception(f"Unexpected error during image download/open: {e}")
         raise RuntimeError(f"Failed to download or open image: {str(e)}")
 
-    task = "image_to_audio"
     result = None
 
     try:
@@ -714,7 +711,6 @@ async def generate_music_from_image(
             ctx=ctx,
             image_data=image_data,
             image_mime_type=safe_mime_type,
-            task=task
         )
         
         logger.info(f"Image-to-audio generation successful: {result['filename']}")
