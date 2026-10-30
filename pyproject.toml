@@ -1,5 +1,5 @@
 [project]
-name = "mcp-veo3"
+name = "lyria-link"
 version = "1.0.1"
 description = "MCP Veo 3 Video Generator - A Model Context Protocol server for Veo 3 video generation"
 readme = "README.md"
@@ -37,10 +37,10 @@ dependencies = [
 ]
 
 [project.scripts]
-veo3-link = "mcp_lyria:main"
+lyria-link = "mcp_lyria:main"
 
 [project.entry-points."mcp.servers"]
-veo3-link = "mcp_lyria:main"
+lyria-link = "mcp_lyria:main"
 
 [project.urls]
 Homepage = "https://github.com/dayongd1/mcp-veo3"
