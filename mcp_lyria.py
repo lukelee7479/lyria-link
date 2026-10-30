@@ -81,10 +81,9 @@ class audioGenerationResponse(BaseModel):
     filename: str
     model: str
     prompt: str
-    negative_prompt: Optional[str] = None
     generation_time: float
     file_size: int
-    aspect_ratio: str
+    lyrics: Optional[str] = None
     url: str
 
 
@@ -102,7 +101,7 @@ class audioInfoResponse(BaseModel):
     modified: str
 
 class audioSubmissionRateLimitError(RuntimeError):
-    """영상 생성 요청이 한도 초과 429로 거절된 경우"""
+    """음악 생성 요청이 한도 초과 429로 거절된 경우"""
 
 def safe_join(root: str, user_path: str) -> str:
     """Safely join paths and prevent directory traversal"""
@@ -415,7 +414,7 @@ async def generate_music_with_progress(
     image_mime_type: Optional[str] = None,
     previous_interaction_id: Optional[str] = None
 ) -> dict:
-    """Generate a audio using Gemini Omni Flash"""
+    """Generate a audio using Google Lyria"""
 
     start_time = time.time()
   
@@ -563,7 +562,7 @@ async def generate_music(
     result = None
 
     try:
-        result = await generate_audio_with_progress(
+        result = await generate_music_with_progress(
             prompt=prompt,
             model=model,
             ctx=ctx
@@ -705,7 +704,7 @@ async def generate_music_from_image(
     result = None
 
     try:
-        result = await generate_audio_with_progress(
+        result = await generate_music_with_progress(
             prompt=prompt,
             model=model,
             ctx=ctx,
